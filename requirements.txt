@@ -1,0 +1,5 @@
+# Lists all Python dependencies for the project.
+requests
+beautifulsoup4
+selenium
+jinja2

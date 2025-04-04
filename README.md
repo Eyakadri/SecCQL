@@ -1,1 +1,2 @@
 # SecCQL
+# Project documentation
