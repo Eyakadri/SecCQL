@@ -1,34 +1,32 @@
 import sys
 import os
 import threading  # Add threading for thread safety
-
-# Add the root directory to sys.path if not already included
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-# Verify sys.path to ensure the parent directory is included
-# print(sys.path)
-
 import time
 import random
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
-from selenium import webdriver  # Explicitly import webdriver
+from selenium import webdriver  # Ensure selenium is installed: pip install selenium
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service  # Correct import for Service
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium_stealth import stealth  # Ensure selenium-stealth is installed
-from database.db_handler import Database # Ensure this module exists and is in the correct path
-import undetected_chromedriver as uc  # Ensure undetected-chromedriver is installed
-from scanner.xss import XSSScanner  # Ensure these modules exist and are in the correct path
+from selenium_stealth import stealth  # Ensure selenium-stealth is installed: pip install selenium-stealth
+from crawler.db_handler import Database  # Ensure this matches the actual path
+from scanner.xss import XSSScanner  # Ensure these match the actual paths
 from scanner.csrf import CSRFScanner
 from scanner.sqli import SQLInjectionScanner
 from scanner.ssrf import SSRFScanner
 from scanner.idor import IDORScanner
 import signal  # Import signal for graceful shutdown
+
+# Ensure the parent directory is in the Python path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+# Add the crawler directory to the Python path
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # Set up logging
 logging.basicConfig(
@@ -99,7 +97,8 @@ class WebCrawler:
             chrome_options.add_argument("--start-maximized")
             chrome_options.add_argument("--no-sandbox")
             chrome_options.add_argument("--disable-dev-shm-usage")
-            chrome_options.add_argument("--headless")
+            # Remove or comment out the headless mode to make the browser visible
+            # chrome_options.add_argument("--headless")
             chrome_options.add_argument("--disable-gpu")
 
             if self.proxy:
@@ -112,10 +111,12 @@ class WebCrawler:
             ]
             chrome_options.add_argument(f"--user-agent={random.choice(user_agents)}")
 
-            # Specify the path to chromedriver explicitly
-            chromedriver_path = "/usr/local/bin/chromedriver"  # Revert to hardcoded path
-            service = Service(chromedriver_path)  # Use hardcoded chromedriver path
-            self.driver = webdriver.Chrome(service=service, options=chrome_options)  # Pass Service object
+            # Make chromedriver path configurable
+            chromedriver_path = os.getenv("CHROMEDRIVER_PATH", "/usr/local/bin/chromedriver")
+            if not os.path.exists(chromedriver_path):
+                raise FileNotFoundError(f"Chromedriver not found at {chromedriver_path}")
+            service = Service(chromedriver_path)
+            self.driver = webdriver.Chrome(service=service, options=chrome_options)
 
             stealth(
                 self.driver,
@@ -135,15 +136,21 @@ class WebCrawler:
         """Fetch the content of a web page using Selenium with retry mechanism."""
         for attempt in range(retries):
             try:
+                print(f"Navigating to: {url}")  # Add this line to display navigation
+                logging.info(f"Navigating to: {url}")  # Log navigation
                 self.driver.get(url)
                 WebDriverWait(self.driver, 30).until(
                     EC.presence_of_element_located((By.TAG_NAME, "body"))
                 )
                 logging.info(f"Page loaded: {url}")
                 
-                # Wait for manual input to proceed
-                if self.manual_input:  # Check if manual input is enabled
-                    input("Press Enter to continue crawling...")  # Keeps the browser open until user input
+                # Wait for manual input to proceed with a timeout
+                if self.manual_input:
+                    try:
+                        print("Waiting for manual input (timeout in 30 seconds)...")
+                        input("Press Enter to continue crawling...")
+                    except TimeoutError:
+                        logging.warning("Manual input timed out.")
                 
                 return self.driver.page_source
             except Exception as e:
@@ -153,7 +160,7 @@ class WebCrawler:
                     time.sleep(2)
                 else:
                     logging.error(f"Failed to fetch {url} after {retries} attempts.")
-                    self.restart_browser()  # Restart browser on final failure
+                    self.restart_browser()
                     return None
 
     def crawl(self, url, depth=0):
@@ -161,13 +168,12 @@ class WebCrawler:
         if self.shutdown_flag.is_set():  # Check for shutdown signal
             return
         print(f"Starting crawl for URL: {url} at depth: {depth}")
-        # Rate limiting
-        if self.request_counter >= self.MAX_REQUESTS_PER_MINUTE:
-            elapsed_time = time.time() - self.start_time
-            if (elapsed_time < 60):
-                sleep_time = 60 - elapsed_time
-                logging.info(f"Rate limit reached. Sleeping for {sleep_time:.2f} seconds.")
-                time.sleep(sleep_time)
+        # Improved rate-limiting logic
+        elapsed_time = time.time() - self.start_time
+        if self.request_counter >= self.MAX_REQUESTS_PER_MINUTE and elapsed_time < 60:
+            sleep_time = 60 - elapsed_time
+            logging.info(f"Rate limit reached. Sleeping for {sleep_time:.2f} seconds.")
+            time.sleep(sleep_time)
             self.start_time = time.time()
             self.request_counter = 0
 
@@ -232,7 +238,10 @@ class WebCrawler:
         for form in forms:
             logging.info(f"Form found at {url}: {form}")
             print(f"Form found at {url}: {form}")
-            self.db.save_form(url, form)
+            try:
+                self.db.save_form(url, form)
+            except Exception as e:
+                logging.error(f"Failed to save form to database: {e}")
 
             if self.xss_scanner.test_xss(form, url):
                 logging.warning(f"XSS vulnerability detected at {url}")
@@ -255,14 +264,22 @@ class WebCrawler:
                 print(f"IDOR vulnerability detected at {url}")
 
     def extract_links(self, html, base_url):
-        """Extract all links from a web page."""
+        """Extract all links from a web page and validate them."""
         soup = BeautifulSoup(html, "html.parser")
         links = set()
         for link in soup.find_all("a", href=True):
             full_url = urljoin(base_url, link["href"])
-            links.add(full_url)
-            logging.debug(f"Extracted link: {full_url}")
+            if self._is_valid_url(full_url):
+                links.add(full_url)
+                logging.debug(f"Extracted valid link: {full_url}")
+            else:
+                logging.debug(f"Invalid link skipped: {full_url}")
         return links
+
+    def _is_valid_url(self, url):
+        """Check if a URL is valid."""
+        parsed = urlparse(url)
+        return bool(parsed.netloc) and bool(parsed.scheme)
 
     def extract_forms(self, html):
         """Extract all forms from a web page."""
@@ -299,6 +316,7 @@ class WebCrawler:
             logging.info("Browser restarted successfully.")
         except Exception as e:
             logging.error(f"Failed to restart browser: {e}")
+            self.executor.shutdown(wait=False)  # Ensure threads are stopped
             raise
 
     def block_domain(self, domain):
@@ -315,12 +333,21 @@ class WebCrawler:
         """Handle graceful shutdown on termination signals."""
         logging.info("Graceful shutdown initiated.")
         self.shutdown_flag.set()  # Signal threads to stop
-        self.executor.shutdown(wait=False)  # Interrupt threads immediately
+        try:
+            self.executor.shutdown(wait=True, timeout=30)  # Add timeout for thread pool shutdown
+        except Exception as e:
+            logging.error(f"Error during executor shutdown: {e}")
         self.close()
 
     def close(self):
         """Close the Selenium WebDriver and database connection."""
-        if self.driver:
-            self.driver.quit()
-        self.db.close()
-        logging.info("Crawler closed successfully.")
+        try:
+            if self.driver:
+                self.driver.quit()
+            self.db.close()
+            logging.info("Crawler closed successfully.")
+        except Exception as e:
+            logging.error(f"Error during shutdown: {e}")
+
+# Example instantiation (ensure this matches your usage)
+crawler = WebCrawler(base_url="http://example.com", max_depth=3, delay=1, proxy=None)

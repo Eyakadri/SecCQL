@@ -4,7 +4,8 @@ import time
 import json
 import signal
 from urllib.parse import urlparse
-from crawler.crawler import WebCrawler
+from crawler.crawler import WebCrawler  # Ensure this matches the actual path
+from concurrent.futures import ThreadPoolExecutor
 
 # Add a debug log to confirm the correct class is imported
 logging.debug(f"Imported WebCrawler from: {WebCrawler.__module__}")
@@ -50,6 +51,16 @@ def handle_shutdown(signum, frame):
     logging.info("Received shutdown signal. Shutting down gracefully...")
     raise KeyboardInterrupt
 
+def validate_positive_int(value):
+    """Validate that a value is a positive integer."""
+    try:
+        ivalue = int(value)
+        if ivalue <= 0:
+            raise ValueError
+        return ivalue
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"Value must be a positive integer: {value}")
+
 def main():
     """
     Main function to initialize and run the web crawler.
@@ -57,9 +68,10 @@ def main():
     # Parse command-line arguments
     parser = argparse.ArgumentParser(description="Web Application Security Crawler")
     parser.add_argument("url", help="Base URL to start crawling from")
-    parser.add_argument("--depth", type=int, default=3, help="Maximum depth to crawl")
+    parser.add_argument("--depth", type=validate_positive_int, default=3, help="Maximum depth to crawl")
     parser.add_argument("--delay", type=float, default=1, help="Delay between requests (in seconds)")
     parser.add_argument("--proxy", type=str, help="Proxy server (e.g., http://your_proxy:port)")
+    parser.add_argument("--thread-pool-size", type=validate_positive_int, default=5, help="Number of threads in the thread pool")
     parser.add_argument("--username", type=str, help="Username for login (optional)")
     parser.add_argument("--password", type=str, help="Password for login (optional)")
     parser.add_argument("--login-url", type=str, help="Login URL (optional, defaults to base URL)")
@@ -68,7 +80,14 @@ def main():
     parser.add_argument("--submit-button", type=str, default="//input[@type='submit']", help="Submit button XPath (optional)")
     parser.add_argument("--block-domain", type=str, nargs="*", help="Domains to block during crawling")
     parser.add_argument("--update-frequency", type=int, default=10, help="Frequency (in seconds) to check for updates")
-    args = parser.parse_args()
+    parser.add_argument("--max-iterations", type=int, default=100, help="Maximum number of crawling iterations")
+
+    try:
+        args = parser.parse_args()
+    except SystemExit as e:
+        logging.error(f"Argument parsing failed: {e}")
+        print("Error: Invalid arguments provided. Use --help for usage information.")
+        return
 
     # Validate the base URL
     try:
@@ -87,6 +106,7 @@ def main():
             delay=args.delay,
             proxy=args.proxy,
         )
+        crawler.executor = ThreadPoolExecutor(max_workers=args.thread_pool_size)  # Set thread pool size dynamically
         logging.info("WebCrawler initialized successfully.")
     except Exception as e:
         logging.error(f"Failed to initialize WebCrawler: {e}")
@@ -101,8 +121,8 @@ def main():
     signal.signal(signal.SIGINT, handle_shutdown)
     signal.signal(signal.SIGTERM, handle_shutdown)
 
-    iteration_count = 0  # Add iteration counter
-    max_iterations = 100  # Limit the number of iterations
+    iteration_count = 0
+    max_iterations = args.max_iterations  # Use configurable max_iterations
 
     try:
         # Log in (if credentials are provided)
@@ -129,7 +149,7 @@ def main():
         print("Crawler initialized. Starting crawl...")
         while iteration_count < max_iterations:
             crawler.crawl(args.url)
-            logging.info("Crawling iteration completed. Checking for updates...")
+            logging.info(f"Iteration {iteration_count + 1}/{max_iterations} completed. Checking for updates...")
             check_for_updates(crawler)
             iteration_count += 1
             time.sleep(args.update_frequency)  # Wait before the next iteration or update check
@@ -144,11 +164,10 @@ def main():
 
         # Graceful shutdown for WebDriver and threads
         try:
-            # Wait for threads to finish (if any)
-            for future in crawler.futures:  # Assuming crawler.futures tracks active threads
-                future.result()  # Wait for the thread to complete
+            if hasattr(crawler, "executor"):
+                crawler.executor.shutdown(wait=True)  # Ensure threads are stopped
         except Exception as e:
-            logging.error(f"Error in thread: {e}")
+            logging.error(f"Error during executor shutdown: {e}")
 
         # Close WebDriver and database connection
         crawler.close()

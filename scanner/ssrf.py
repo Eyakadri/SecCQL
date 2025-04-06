@@ -5,7 +5,9 @@ from urllib.parse import urljoin, urlparse
 class SSRFScanner:
     """Scanner to detect SSRF vulnerabilities."""
 
-    def __init__(self):
+    def __init__(self, driver=None):  # Accept driver as an optional argument
+        """Initialize the SSRFScanner with a Selenium WebDriver."""
+        self.driver = driver
         self.payloads = [
             "http://127.0.0.1",
             "http://localhost",
