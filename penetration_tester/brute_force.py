@@ -2,6 +2,7 @@
 
 import time
 import logging
+import hashlib
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
@@ -9,12 +10,18 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 MAX_ATTEMPTS = 5
 LOCKOUT_TIME = 60  # in seconds
 
+def hash_password(password):
+    """
+    Hash the password for secure comparison.
+    """
+    return hashlib.sha256(password.encode()).hexdigest()
+
 def simulate_login(username, password, attempt_tracker):
     """
     Simulate a login system with brute-force detection.
     """
     correct_username = "admin"
-    correct_password = "password123"
+    correct_password_hash = hash_password("password123")
 
     if username in attempt_tracker and attempt_tracker[username]['attempts'] >= MAX_ATTEMPTS:
         if time.time() - attempt_tracker[username]['last_attempt'] < LOCKOUT_TIME:
@@ -23,7 +30,7 @@ def simulate_login(username, password, attempt_tracker):
         else:
             attempt_tracker[username]['attempts'] = 0  # Reset attempts after lockout period
 
-    if username == correct_username and password == correct_password:
+    if username == correct_username and hash_password(password) == correct_password_hash:
         logging.info(f"Login successful for user {username}.")
         attempt_tracker.pop(username, None)  # Clear tracker on successful login
         return True

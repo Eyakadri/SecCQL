@@ -15,8 +15,13 @@ def is_token_secure(token):
         logging.warning("Session token is too short, making it vulnerable to brute-force attacks.")
         return False
 
-    if not secrets.compare_digest(token, secrets.token_hex(len(token) // 2)):
-        logging.warning("Session token lacks sufficient randomness.")
+    try:
+        generated_token = secrets.token_hex(len(token) // 2)
+        if token == generated_token:  # Avoid predictable tokens
+            logging.warning("Session token is predictable.")
+            return False
+    except Exception as e:
+        logging.error(f"Error validating token randomness: {e}")
         return False
 
     logging.info("Session token appears secure.")

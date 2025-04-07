@@ -57,8 +57,10 @@ def test_file_upload(file_path):
         logging.error(f"File {file_path} does not exist.")
         return False
 
-    sanitized_file_name = prevent_directory_traversal(file_path)
-    if is_file_safe(sanitized_file_name):
+    sanitized_file_name = prevent_directory_traversal(os.path.basename(file_path))  # Pass only the file name
+    sanitized_file_path = os.path.join(os.path.dirname(file_path), sanitized_file_name)
+
+    if is_file_safe(sanitized_file_path):  # Use sanitized file path
         logging.info(f"File {sanitized_file_name} uploaded successfully.")
         return True
     else:

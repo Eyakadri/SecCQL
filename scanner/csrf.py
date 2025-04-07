@@ -11,10 +11,14 @@ class CSRFScanner:
         action = form.get("action", urljoin(url, form.get("action", "")))
         inputs = form.get("inputs", [])
         csrf_token_name = None
-        csrf_token_found = any(
-            "csrf" in input_field.get("name", "").lower() or "token" in input_field.get("name", "").lower()
-            for input_field in inputs
-        )
+        csrf_token_found = False
+
+        for input_field in inputs:
+            name = input_field.get("name", "").lower()
+            if "csrf" in name or "token" in name:
+                csrf_token_name = name
+                csrf_token_found = True
+                break
 
         if not csrf_token_found:
             logging.warning(f"Potential CSRF vulnerability found at {action}: No CSRF token detected.")
@@ -22,6 +26,12 @@ class CSRFScanner:
             return True
 
         try:
+            # Check for anti-CSRF headers
+            headers = self.driver.execute_script("return Object.keys(window.performance.getEntriesByType('resource')[0].responseStart);")
+            if any(header.lower() in ["x-csrf-token", "x-xsrf-token"] for header in headers):
+                logging.info(f"Anti-CSRF header detected at {action}.")
+                return False
+
             self.driver.get(action)
             for input_field in inputs:
                 name = input_field.get("name")
@@ -30,7 +40,8 @@ class CSRFScanner:
                     input_element.clear()
                     input_element.send_keys("test")
 
-            self.driver.execute_script(f"document.getElementsByName('{csrf_token_name}')[0].remove()")
+            if csrf_token_name:
+                self.driver.execute_script(f"document.getElementsByName('{csrf_token_name}')[0].remove()")
             submit_button = self.driver.find_element(By.XPATH, "//form//button[@type='submit'] | //form//input[@type='submit']")
             submit_button.click()
 

@@ -9,6 +9,11 @@ def test_discount_logic(user_role, discount):
     """
     Test for business logic flaws in discount application.
     """
+    valid_roles = {"admin", "user", "guest"}
+    if user_role not in valid_roles:
+        logging.warning(f"Invalid user role detected: {user_role}")
+        return False
+
     if user_role == "admin" and discount > 50:
         logging.warning("Admin users should not receive discounts greater than 50%.")
         return False

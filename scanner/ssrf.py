@@ -15,8 +15,20 @@ class SSRFScanner:
             "http://[::1]",  # IPv6 localhost
             "http://example.com@127.0.0.1",  # Bypass techniques
             "http://127.0.0.1:80",  # Port-specific
+            "http://evil.com@localhost",  # DNS rebinding
+            "http://127.0.0.1#evil.com",  # Fragment bypass
+        ]
+        self.payloads += [
+            "http://127.0.0.1:22",  # Test SSH port
+            "http://127.0.0.1:3306",  # Test MySQL port
+            "http://127.0.0.1:6379",  # Test Redis port
+            "http://127.0.0.1:8080",  # Test common web server port
+            "http://[::1]:80",  # IPv6 localhost with port
+            "http://oob.example.com/test",  # OOB with a specific endpoint
         ]
         self.oob_server = "http://oob.example.com"  # Out-of-band detection server
+        self.log_file = "ssrf_vulnerabilities.log"  # Log file for detected vulnerabilities
+        logging.basicConfig(filename=self.log_file, level=logging.INFO)
 
     def test_ssrf(self, url, form=None):
         """
@@ -29,6 +41,10 @@ class SSRFScanner:
         Returns:
             bool: True if SSRF vulnerability is detected, False otherwise.
         """
+        if not self._is_valid_url(url):
+            logging.error(f"Invalid URL: {url}")
+            return False
+
         try:
             logging.info(f"Testing SSRF on {url}")
             for payload in self.payloads + [self.oob_server]:
@@ -55,7 +71,7 @@ class SSRFScanner:
 
     def _is_ssrf_successful(self, response):
         """
-        Check if the response indicates a successful SSRF attack.
+        Enhanced detection for SSRF attacks.
 
         Args:
             response (requests.Response): The HTTP response.
@@ -63,4 +79,25 @@ class SSRFScanner:
         Returns:
             bool: True if SSRF is successful, False otherwise.
         """
-        return response.status_code == 200 and ("localhost" in response.text.lower() or self.oob_server in response.text)
+        return response.status_code in [200, 301, 302] and (
+            "localhost" in response.text.lower() or
+            self.oob_server in response.text or
+            "metadata" in response.text.lower() or
+            "internal" in response.text.lower()
+        )
+
+    def _is_valid_url(self, url):
+        """
+        Validate the given URL.
+
+        Args:
+            url (str): The URL to validate.
+
+        Returns:
+            bool: True if the URL is valid, False otherwise.
+        """
+        try:
+            result = urlparse(url)
+            return all([result.scheme, result.netloc])
+        except ValueError:
+            return False

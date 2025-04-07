@@ -38,7 +38,7 @@ def check_for_updates(crawler, config_file="config.json"):
                 crawler.delay = config["delay"]
                 logging.info(f"Updated delay to {crawler.delay}")
     except FileNotFoundError:
-        logging.warning("Configuration file not found. Skipping updates.")
+        logging.debug("Configuration file not found. Skipping updates.")  # Change to DEBUG to suppress unnecessary warnings
     except json.JSONDecodeError:
         logging.error("Error decoding JSON from config file.")
     except Exception as e:
