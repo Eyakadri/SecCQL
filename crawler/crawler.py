@@ -20,7 +20,10 @@ from scanner.csrf import CSRFScanner
 from scanner.sqli import SQLInjectionScanner
 from scanner.ssrf import SSRFScanner
 from scanner.idor import IDORScanner
+from scanner.command_injection import CommandInjectionScanner
 import signal  # Import signal for graceful shutdown
+from queue import Queue, Empty, Full  # Import Empty and Full for handling queue timeout
+import sqlite3  # Assuming SQLite is used for the database
 
 # Ensure the parent directory is in the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -34,6 +37,42 @@ logging.basicConfig(
     level=logging.DEBUG,
     format="%(asctime)s - %(levelname)s - %(message)s",
 )
+
+class ConnectionPool:
+    """A simple connection pool for database connections."""
+    def __init__(self, db_path, pool_size=10):  # Increase default pool size
+        self.db_path = db_path
+        self.pool = Queue(maxsize=pool_size)
+        for _ in range(pool_size):
+            self.pool.put(self._create_connection())
+
+    def _create_connection(self):
+        return sqlite3.connect(self.db_path, check_same_thread=False)
+
+    def get_connection(self):
+        try:
+            conn = self.pool.get(timeout=5)
+            # Validate the connection
+            try:
+                conn.execute("SELECT 1")
+            except sqlite3.Error:
+                conn = self._create_connection()  # Replace invalid connection
+            return conn
+        except Empty:
+            logging.warning("Connection pool is full. Consider increasing the pool size.")
+            raise Exception("No available database connections in the pool.")
+
+    def return_connection(self, connection):
+        try:
+            self.pool.put(connection, timeout=5)
+        except Full:
+            logging.warning("Connection pool is full, discarding connection.")
+            connection.close()  # Close the connection if it cannot be returned to the pool
+
+    def close_all(self):
+        while not self.pool.empty():
+            conn = self.pool.get_nowait()
+            conn.close()
 
 class WebCrawler:
     """Web crawler for discovering endpoints, forms, and input fields."""
@@ -60,15 +99,26 @@ class WebCrawler:
         signal.signal(signal.SIGTERM, self.graceful_shutdown)  # Handle termination signals
         self.visited_urls_lock = threading.Lock()  # Add lock for thread safety
         self.shutdown_flag = threading.Event()  # Use an event for graceful shutdown
-        self.executor = ThreadPoolExecutor(max_workers=5)  # Initialize ThreadPoolExecutor
+        self.connection_pool_size = 10  # Increase connection pool size to handle more concurrent requests
+        self.executor = ThreadPoolExecutor(max_workers=self.connection_pool_size)  # Adjust thread pool size
         self.manual_input = False  # Add a flag for optional manual input
+        self.db_queue = Queue()  # Queue for database operations
+        self.db_thread = threading.Thread(target=self._process_db_queue, daemon=True)
+        self.db_thread.start()
+        self.rate_limit_lock = threading.Lock()  # Add lock for rate-limiting logic
 
         # Initialize scanners
         self.xss_scanner = XSSScanner(self.driver)
         self.csrf_scanner = CSRFScanner(self.driver)
         self.sqli_scanner = SQLInjectionScanner(self.driver)
         self.ssrf_scanner = SSRFScanner(self.driver)
-        self.idor_scanner = IDORScanner()  # Initialize IDOR scanner
+        self.idor_scanner = IDORScanner()
+        self.command_injection_scanner = CommandInjectionScanner()
+
+        self.connection_pool = ConnectionPool(
+            db_path=os.getenv("DB_PATH", "crawler.db"), pool_size=10
+        )  # Use connection pool
+        self._initialize_schema()  # Initialize database schema
 
     def login(self, login_url, username_field, password_field, submit_button, username, password):
         """Login to a web application using Selenium."""
@@ -98,7 +148,7 @@ class WebCrawler:
             chrome_options.add_argument("--no-sandbox")
             chrome_options.add_argument("--disable-dev-shm-usage")
             # Remove or comment out the headless mode to make the browser visible
-            # chrome_options.add_argument("--headless")
+            chrome_options.add_argument("--headless")
             chrome_options.add_argument("--disable-gpu")
 
             if self.proxy:
@@ -136,6 +186,7 @@ class WebCrawler:
         """Fetch the content of a web page using Selenium with retry mechanism."""
         for attempt in range(retries):
             try:
+                logging.debug(f"Attempting to fetch page: {url}, Attempt: {attempt + 1}")
                 print(f"Navigating to: {url}")  # Add this line to display navigation
                 logging.info(f"Navigating to: {url}")  # Log navigation
                 self.driver.get(url)
@@ -154,9 +205,8 @@ class WebCrawler:
                 
                 return self.driver.page_source
             except Exception as e:
-                logging.error(f"Error fetching {url} with Selenium: {e}")
+                logging.error(f"Error fetching {url}: {e}")
                 if attempt < retries - 1:
-                    logging.warning(f"Retrying ({attempt + 1}/{retries})...")
                     time.sleep(2)
                 else:
                     logging.error(f"Failed to fetch {url} after {retries} attempts.")
@@ -166,21 +216,23 @@ class WebCrawler:
     def crawl(self, url, depth=0):
         """Crawl a web application starting from the given URL."""
         if self.shutdown_flag.is_set():  # Check for shutdown signal
+            logging.info("Shutdown flag set. Stopping crawl.")
             return
         print(f"Starting crawl for URL: {url} at depth: {depth}")
         # Improved rate-limiting logic
-        elapsed_time = time.time() - self.start_time
-        if self.request_counter >= self.MAX_REQUESTS_PER_MINUTE and elapsed_time < 60:
-            sleep_time = 60 - elapsed_time
-            logging.info(f"Rate limit reached. Sleeping for {sleep_time:.2f} seconds.")
-            time.sleep(sleep_time)
-            self.start_time = time.time()
-            self.request_counter = 0
-
-        self.request_counter += 1
+        with self.rate_limit_lock:
+            elapsed_time = time.time() - self.start_time
+            if self.request_counter >= self.MAX_REQUESTS_PER_MINUTE and elapsed_time < 60:
+                sleep_time = 60 - elapsed_time
+                logging.info(f"Rate limit reached. Sleeping for {sleep_time:.2f} seconds.")
+                time.sleep(sleep_time)
+                self.start_time = time.time()
+                self.request_counter = 0
+            self.request_counter += 1
 
         with self.visited_urls_lock:  # Ensure thread-safe access to visited_urls
             if url in self.visited_urls or depth > self.max_depth:
+                logging.debug(f"Skipping URL: {url} (already visited or max depth reached)")
                 return
             self.visited_urls.add(url)
 
@@ -195,8 +247,8 @@ class WebCrawler:
                 self.restart_browser()  # Restart browser on failure
                 return  # Exit crawl for this URL
 
-            # Save URL to database
-            self.db.save_url(url, depth)
+            # Save URL to database using the queue
+            self.db_queue.put(("save_url", (url, depth)))
 
             # Extract links and crawl them
             links = self.extract_links(html, self.base_url)
@@ -221,6 +273,9 @@ class WebCrawler:
             # Extract forms and save them to the database
             forms = self.extract_forms(html)
             logging.info(f"Found {len(forms)} forms at {url}")
+            for form in forms:
+                # Save forms to database using the queue
+                self.db_queue.put(("save_form", (url, form)))
             self._scan_vulnerabilities(url, forms)  # Refactored scanning logic
 
             # Add a random delay between requests
@@ -236,6 +291,7 @@ class WebCrawler:
     def _scan_vulnerabilities(self, url, forms):
         """Refactored method to scan for vulnerabilities."""
         for form in forms:
+            logging.debug(f"Scanning form at {url}: {form}")
             logging.info(f"Form found at {url}: {form}")
             print(f"Form found at {url}: {form}")
             try:
@@ -263,6 +319,10 @@ class WebCrawler:
                 logging.warning(f"IDOR vulnerability detected at {url}")
                 print(f"IDOR vulnerability detected at {url}")
 
+            if self.command_injection_scanner.test_command_injection(form, url):
+                logging.warning(f"Command Injection vulnerability detected at {url}")
+                print(f"Command Injection vulnerability detected at {url}")
+
     def extract_links(self, html, base_url):
         """Extract all links from a web page and validate them."""
         soup = BeautifulSoup(html, "html.parser")
@@ -271,7 +331,7 @@ class WebCrawler:
             full_url = urljoin(base_url, link["href"])
             if self._is_valid_url(full_url):
                 links.add(full_url)
-                logging.debug(f"Extracted valid link: {full_url}")
+                logging.debug(f"Valid link extracted: {full_url}")
             else:
                 logging.debug(f"Invalid link skipped: {full_url}")
         return links
@@ -309,15 +369,18 @@ class WebCrawler:
     def restart_browser(self):
         """Restart the browser if it crashes or loses connection."""
         logging.info("Restarting browser...")
-        try:
-            if self.driver:
-                self.driver.quit()
-            self.initialize_driver()
-            logging.info("Browser restarted successfully.")
-        except Exception as e:
-            logging.error(f"Failed to restart browser: {e}")
-            self.executor.shutdown(wait=False)  # Ensure threads are stopped
-            raise
+        for _ in range(3):  # Retry up to 3 times
+            try:
+                if self.driver:
+                    self.driver.quit()
+                self.initialize_driver()
+                logging.info("Browser restarted successfully.")
+                return
+            except Exception as e:
+                logging.error(f"Failed to restart browser: {e}")
+                time.sleep(2)
+        logging.error("Failed to restart browser after 3 attempts.")
+        raise RuntimeError("Browser restart failed.")
 
     def block_domain(self, domain):
         """Dynamically block a domain."""
@@ -331,6 +394,7 @@ class WebCrawler:
 
     def graceful_shutdown(self, signum, frame):
         """Handle graceful shutdown on termination signals."""
+        logging.info(f"Received shutdown signal: {signum}")
         logging.info("Graceful shutdown initiated.")
         self.shutdown_flag.set()  # Signal threads to stop
         try:
@@ -339,15 +403,112 @@ class WebCrawler:
             logging.error(f"Error during executor shutdown: {e}")
         self.close()
 
-    def close(self):
-        """Close the Selenium WebDriver and database connection."""
+    def _process_db_queue(self):
+        """Process database operations in a single thread using connection pooling."""
+        while not self.shutdown_flag.is_set():
+            try:
+                operation, args = self.db_queue.get(timeout=1)
+                logging.debug(f"Processing database operation: {operation}")
+                conn = self.connection_pool.get_connection()
+                try:
+                    if operation == "save_url":
+                        self._save_url(conn, *args)
+                    elif operation == "save_form":
+                        self._save_form(conn, *args)
+                finally:
+                    self.connection_pool.return_connection(conn)  # Ensure connection is returned
+                self.db_queue.task_done()
+            except Empty:
+                continue
+            except sqlite3.OperationalError as e:
+                logging.error(f"Database is locked: {e}")
+                time.sleep(1)  # Wait before retrying
+            except Exception as e:
+                logging.error(f"Error processing database operation: {e}")
+        # Ensure all tasks in the queue are processed before shutdown
+        while not self.db_queue.empty():
+            try:
+                operation, args = self.db_queue.get_nowait()
+                logging.debug(f"Processing remaining database operation: {operation}")
+                conn = self.connection_pool.get_connection()
+                try:
+                    if operation == "save_url":
+                        self._save_url(conn, *args)
+                    elif operation == "save_form":
+                        self._save_form(conn, *args)
+                finally:
+                    self.connection_pool.return_connection(conn)  # Ensure connection is returned
+                self.db_queue.task_done()
+            except sqlite3.OperationalError as e:
+                logging.error(f"Database is locked: {e}")
+                time.sleep(1)  # Wait before retrying
+            except Exception as e:
+                logging.error(f"Error processing remaining database operation: {e}")
+
+    def _save_url(self, conn, url, depth):
+        """Save a URL to the database."""
         try:
+            cursor = conn.cursor()
+            cursor.execute("INSERT OR IGNORE INTO urls (url, depth) VALUES (?, ?)", (url, depth))  # Use INSERT OR IGNORE
+            conn.commit()
+        except sqlite3.OperationalError as e:
+            logging.error(f"Database operation error: {e}")
+        except Exception as e:
+            logging.error(f"Error saving URL to database: {e}")
+
+    def _save_form(self, conn, url, form):
+        """Save a form to the database."""
+        try:
+            cursor = conn.cursor()
+            cursor.execute("INSERT INTO forms (url, form_data) VALUES (?, ?)", (url, str(form)))
+            conn.commit()
+        except sqlite3.OperationalError as e:
+            logging.error(f"Database operation error: {e}")
+        except Exception as e:
+            logging.error(f"Error saving form to database: {e}")
+
+    def _initialize_schema(self):
+        """Initialize the database schema if it does not exist."""
+        conn = self.connection_pool.get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS urls (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    url TEXT NOT NULL UNIQUE,  -- Add UNIQUE constraint to prevent duplicates
+                    depth INTEGER NOT NULL
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS forms (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    url TEXT NOT NULL,
+                    form_data TEXT NOT NULL
+                )
+            """)
+            conn.commit()
+        finally:
+            self.connection_pool.return_connection(conn)
+
+    def close(self):
+        """Close the Selenium WebDriver, database connection pool, and other resources."""
+        logging.info("Closing crawler resources...")
+        try:
+            self.shutdown_flag.set()
+            self.db_thread.join()
             if self.driver:
                 self.driver.quit()
-            self.db.close()
+            self.connection_pool.close_all()
             logging.info("Crawler closed successfully.")
         except Exception as e:
             logging.error(f"Error during shutdown: {e}")
 
 # Example instantiation (ensure this matches your usage)
-crawler = WebCrawler(base_url="http://example.com", max_depth=3, delay=1, proxy=None)
+if __name__ == "__main__":
+    try:
+        crawler = WebCrawler(base_url="http://example.com", max_depth=3, delay=1, proxy=None)
+        crawler.crawl(crawler.base_url)
+    except Exception as e:
+        logging.error(f"Unhandled exception: {e}")
+    finally:
+        crawler.close()

@@ -7,7 +7,7 @@ class Database:
     """
     def __init__(self, db_name="crawler.db"):
         try:
-            self.conn = sqlite3.connect(db_name)
+            self.conn = sqlite3.connect(db_name, check_same_thread=False)  # Allow connection across threads
             self.cursor = self.conn.cursor()
             self._create_tables()
         except sqlite3.Error as e:
