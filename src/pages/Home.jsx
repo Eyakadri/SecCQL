@@ -5,7 +5,7 @@ import './Home.css'; // Assuming you have some styles for the Home component
 const Home = () => {
     return (
         <div className="home-container">
-            <h1>Welcome to the Penetration Testing Tool</h1>
+            <h1>Welcome to the SECCQL</h1>
             <p>
                 This application allows you to configure and run penetration tests, view results, and generate reports.
             </p>

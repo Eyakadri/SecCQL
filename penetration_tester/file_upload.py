@@ -67,6 +67,22 @@ def test_file_upload(file_path):
         logging.error(f"File {sanitized_file_name} failed validation and was not uploaded.")
         return False
 
+def test_insecure_cookies(cookies):
+    """
+    Test for insecure cookie attributes.
+
+    Args:
+        cookies (list): List of cookies.
+
+    Returns:
+        list: List of insecure cookies.
+    """
+    insecure_cookies = []
+    for cookie in cookies:
+        if not cookie.get("secure") or not cookie.get("httpOnly"):
+            insecure_cookies.append(cookie)
+    return insecure_cookies
+
 if __name__ == "__main__":
     # Example usage
     test_file = "example.txt"  # Replace with the path to the file you want to test

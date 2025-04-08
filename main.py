@@ -81,6 +81,7 @@ def main():
     parser.add_argument("--block-domain", type=str, nargs="*", help="Domains to block during crawling")
     parser.add_argument("--update-frequency", type=int, default=10, help="Frequency (in seconds) to check for updates")
     parser.add_argument("--max-iterations", type=int, default=100, help="Maximum number of crawling iterations")
+    parser.add_argument("--output", type=str, default="report.pdf", help="Path to save the generated report")  # Added output argument
 
     try:
         args = parser.parse_args()
@@ -172,6 +173,16 @@ def main():
         # Close WebDriver and database connection
         crawler.close()
         logging.info("Crawler shutdown complete.")
+
+        # Generate a report after crawling
+        try:
+            from reporter.report_generator import ReportGenerator
+            vulnerabilities = []  # Replace with actual vulnerabilities detected during crawling
+            reporter = ReportGenerator()
+            reporter.generate_pdf(vulnerabilities, args.output)
+            logging.info(f"Report saved to {args.output}")
+        except Exception as e:
+            logging.error(f"Failed to generate report: {e}")
 
 if __name__ == "__main__":
     main()

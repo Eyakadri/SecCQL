@@ -1,6 +1,13 @@
-# Penetration Testing GUI
+# SecCQL: Penetration Testing Tool
 
-This project is a web-based penetration testing tool that allows users to configure scans, view results, and generate reports. It integrates with a Python backend to perform various security assessments.
+SecCQL is a web-based penetration testing tool that allows users to configure scans, view results, and generate reports.
+
+## Features
+- **Frontend**: React-based GUI for configuring scans and viewing results.
+- **Backend**: Python-based scanners for vulnerabilities like XSS, SQLi, SSRF, and more.
+- **Crawler**: Selenium-based crawler for discovering endpoints and forms.
+- **Reporting**: Generates detailed reports with charts and MITRE mappings.
+- **AI**: Uses machine learning for payload generation and anomaly detection.
 
 ## Project Structure
 
@@ -31,38 +38,32 @@ penetration-testing-gui
 └── vite.config.js          # Vite configuration file
 ```
 
-## Setup Instructions
-
-1. **Clone the repository:**
-   ```
+## Setup
+1. Clone the repository:
+   ```bash
    git clone <repository-url>
-   cd penetration-testing-gui
+   cd SecCQL
    ```
 
-2. **Install dependencies:**
-   ```
+2. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
    npm install
    ```
 
-3. **Run the application:**
-   ```
+3. Run the application:
+   ```bash
    npm run dev
-   ```
-
-4. **Open your browser and navigate to:**
-   ```
-   http://localhost:3000
+   python main.py
    ```
 
 ## Usage
-
-- **Scan Configuration:** Use the Scan Configuration form to set up your penetration tests, selecting the desired scan types and parameters.
-- **View Results:** After running a scan, navigate to the Scans page to view the results, including any vulnerabilities found.
-- **Generate Reports:** Use the Report Generator to create reports based on the scan results, with options for different formats.
+- **Configure Scans**: Use the GUI to set up penetration tests.
+- **View Results**: Analyze vulnerabilities detected during scans.
+- **Generate Reports**: Export results as PDF, HTML, or JSON.
 
 ## Contributing
-
-Contributions are welcome! Please open an issue or submit a pull request for any improvements or bug fixes.
+Contributions are welcome! Please open an issue or submit a pull request.
 
 ## License
 

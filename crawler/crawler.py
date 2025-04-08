@@ -147,7 +147,6 @@ class WebCrawler:
             chrome_options.add_argument("--start-maximized")
             chrome_options.add_argument("--no-sandbox")
             chrome_options.add_argument("--disable-dev-shm-usage")
-            # Remove or comment out the headless mode to make the browser visible
             chrome_options.add_argument("--headless")
             chrome_options.add_argument("--disable-gpu")
 
@@ -189,10 +188,13 @@ class WebCrawler:
                 logging.debug(f"Attempting to fetch page: {url}, Attempt: {attempt + 1}")
                 print(f"Navigating to: {url}")  # Add this line to display navigation
                 logging.info(f"Navigating to: {url}")  # Log navigation
+                start_time = time.time()  # Start timing
                 self.driver.get(url)
                 WebDriverWait(self.driver, 30).until(
                     EC.presence_of_element_located((By.TAG_NAME, "body"))
                 )
+                response_time = time.time() - start_time  # Calculate response time
+                logging.info(f"Response time for {url}: {response_time:.2f} seconds")
                 logging.info(f"Page loaded: {url}")
                 
                 # Wait for manual input to proceed with a timeout
@@ -212,6 +214,22 @@ class WebCrawler:
                     logging.error(f"Failed to fetch {url} after {retries} attempts.")
                     self.restart_browser()
                     return None
+
+    def detect_infinite_redirects(self, url):
+        """
+        Detect infinite redirects by tracking visited URLs in the same session.
+
+        Args:
+            url (str): The URL to check.
+        """
+        if url in self.redirect_history:
+            self.redirect_history[url] += 1
+            if self.redirect_history[url] > 5:  # Threshold for infinite redirects
+                logging.warning(f"Infinite redirect detected at {url}")
+                return True
+        else:
+            self.redirect_history[url] = 1
+        return False
 
     def crawl(self, url, depth=0):
         """Crawl a web application starting from the given URL."""
@@ -453,6 +471,7 @@ class WebCrawler:
             conn.commit()
         except sqlite3.OperationalError as e:
             logging.error(f"Database operation error: {e}")
+            time.sleep(1)  # Retry after a delay
         except Exception as e:
             logging.error(f"Error saving URL to database: {e}")
 
