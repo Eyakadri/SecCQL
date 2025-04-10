@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-const ScanConfigurationForm = () => {
+const ScanConfigurationForm = ({ onSubmit }) => {
     const [scanType, setScanType] = useState('basic');
     const [scanDepth, setScanDepth] = useState(3);
     const [scanDelay, setScanDelay] = useState(1);
@@ -8,10 +8,19 @@ const ScanConfigurationForm = () => {
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
 
+    const validateProxy = (proxy) => {
+        const proxyRegex = /^(http|https):\/\/[^\s$.?#].[^\s]*$/;
+        return proxy === '' || proxyRegex.test(proxy);
+    };
+
     const handleSubmit = (e) => {
         e.preventDefault();
         if (scanDepth < 1 || scanDelay < 0) {
             alert("Please enter valid values for scan depth and delay.");
+            return;
+        }
+        if (!validateProxy(proxy)) {
+            alert("Please enter a valid proxy URL.");
             return;
         }
         const scanConfig = {
@@ -22,8 +31,7 @@ const ScanConfigurationForm = () => {
             username,
             password,
         };
-        // Call API to start the scan with scanConfig
-        console.log('Starting scan with configuration:', scanConfig);
+        onSubmit(scanConfig); // Call the passed onSubmit function
     };
 
     return (
@@ -60,6 +68,7 @@ const ScanConfigurationForm = () => {
                     type="text"
                     value={proxy}
                     onChange={(e) => setProxy(e.target.value)}
+                    placeholder="http://proxy.example.com"
                 />
             </div>
             <div>

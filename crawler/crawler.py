@@ -13,7 +13,9 @@ from selenium.webdriver.chrome.service import Service  # Correct import for Serv
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium_stealth import stealth  # Ensure selenium-stealth is installed: pip install selenium-stealth
+
+# Ensure selenium-stealth is installed: pip install selenium-stealth
+from selenium_stealth import stealth
 from crawler.db_handler import Database  # Ensure this matches the actual path
 from scanner.xss import XSSScanner  # Ensure these match the actual paths
 from scanner.csrf import CSRFScanner
@@ -22,7 +24,9 @@ from scanner.ssrf import SSRFScanner
 from scanner.idor import IDORScanner
 from scanner.command_injection import CommandInjectionScanner
 import signal  # Import signal for graceful shutdown
-from queue import Queue, Empty, Full  # Import Empty and Full for handling queue timeout
+
+# Import Empty and Full for handling queue timeout
+from queue import Queue, Empty, Full
 import sqlite3  # Assuming SQLite is used for the database
 
 # Ensure the parent directory is in the Python path
@@ -38,8 +42,10 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",
 )
 
+
 class ConnectionPool:
     """A simple connection pool for database connections."""
+
     def __init__(self, db_path, pool_size=10):  # Increase default pool size
         self.db_path = db_path
         self.pool = Queue(maxsize=pool_size)
@@ -59,7 +65,9 @@ class ConnectionPool:
                 conn = self._create_connection()  # Replace invalid connection
             return conn
         except Empty:
-            logging.warning("Connection pool is full. Consider increasing the pool size.")
+            logging.warning(
+                "Connection pool is full. Consider increasing the pool size."
+            )
             raise Exception("No available database connections in the pool.")
 
     def return_connection(self, connection):
@@ -74,10 +82,14 @@ class ConnectionPool:
             conn = self.pool.get_nowait()
             conn.close()
 
+
 class WebCrawler:
     """Web crawler for discovering endpoints, forms, and input fields."""
+
     def __init__(self, base_url, max_depth=3, delay=1, proxy=None):
-        logging.info(f"Initializing WebCrawler with base_url: {base_url}, max_depth: {max_depth}, delay: {delay}")
+        logging.info(
+            f"Initializing WebCrawler with base_url: {base_url}, max_depth: {max_depth}, delay: {delay}"
+        )
         self.base_url = base_url
         self.visited_urls = set()
         self.max_depth = max_depth
@@ -96,11 +108,15 @@ class WebCrawler:
         self.MAX_REQUESTS_PER_MINUTE = 60
         self.start_time = time.time()  # Track start time for rate limiting
         signal.signal(signal.SIGINT, self.graceful_shutdown)  # Handle Ctrl+C
-        signal.signal(signal.SIGTERM, self.graceful_shutdown)  # Handle termination signals
+        # Handle termination signals
+        signal.signal(signal.SIGTERM, self.graceful_shutdown)
         self.visited_urls_lock = threading.Lock()  # Add lock for thread safety
         self.shutdown_flag = threading.Event()  # Use an event for graceful shutdown
-        self.connection_pool_size = 10  # Increase connection pool size to handle more concurrent requests
-        self.executor = ThreadPoolExecutor(max_workers=self.connection_pool_size)  # Adjust thread pool size
+        # Increase connection pool size to handle more concurrent requests
+        self.connection_pool_size = 10
+        self.executor = ThreadPoolExecutor(
+            max_workers=self.connection_pool_size
+        )  # Adjust thread pool size
         self.manual_input = False  # Add a flag for optional manual input
         self.db_queue = Queue()  # Queue for database operations
         self.db_thread = threading.Thread(target=self._process_db_queue, daemon=True)
@@ -120,7 +136,15 @@ class WebCrawler:
         )  # Use connection pool
         self._initialize_schema()  # Initialize database schema
 
-    def login(self, login_url, username_field, password_field, submit_button, username, password):
+    def login(
+        self,
+        login_url,
+        username_field,
+        password_field,
+        submit_button,
+        username,
+        password,
+    ):
         """Login to a web application using Selenium."""
         try:
             self.driver.get(login_url)
@@ -133,12 +157,11 @@ class WebCrawler:
             logging.error(f"Failed to log in: {e}")
             raise
 
-
     def initialize_driver(self):
         """Initialize the Selenium WebDriver."""
         try:
             logging.info("Initializing the WebDriver...")
-            
+
             chrome_options = Options()
             chrome_options.add_argument("--disable-blink-features=AutomationControlled")
             chrome_options.add_argument("--disable-extensions")
@@ -147,7 +170,7 @@ class WebCrawler:
             chrome_options.add_argument("--start-maximized")
             chrome_options.add_argument("--no-sandbox")
             chrome_options.add_argument("--disable-dev-shm-usage")
-            chrome_options.add_argument("--headless")
+            # chrome_options.add_argument("--headless")
             chrome_options.add_argument("--disable-gpu")
 
             if self.proxy:
@@ -161,9 +184,13 @@ class WebCrawler:
             chrome_options.add_argument(f"--user-agent={random.choice(user_agents)}")
 
             # Make chromedriver path configurable
-            chromedriver_path = os.getenv("CHROMEDRIVER_PATH", "/usr/local/bin/chromedriver")
+            chromedriver_path = os.getenv(
+                "CHROMEDRIVER_PATH", "/usr/local/bin/chromedriver"
+            )
             if not os.path.exists(chromedriver_path):
-                raise FileNotFoundError(f"Chromedriver not found at {chromedriver_path}")
+                raise FileNotFoundError(
+                    f"Chromedriver not found at {chromedriver_path}"
+                )
             service = Service(chromedriver_path)
             self.driver = webdriver.Chrome(service=service, options=chrome_options)
 
@@ -185,8 +212,11 @@ class WebCrawler:
         """Fetch the content of a web page using Selenium with retry mechanism."""
         for attempt in range(retries):
             try:
-                logging.debug(f"Attempting to fetch page: {url}, Attempt: {attempt + 1}")
-                print(f"Navigating to: {url}")  # Add this line to display navigation
+                logging.debug(
+                    f"Attempting to fetch page: {url}, Attempt: {attempt + 1}"
+                )
+                # Add this line to display navigation
+                print(f"Navigating to: {url}")
                 logging.info(f"Navigating to: {url}")  # Log navigation
                 start_time = time.time()  # Start timing
                 self.driver.get(url)
@@ -196,7 +226,7 @@ class WebCrawler:
                 response_time = time.time() - start_time  # Calculate response time
                 logging.info(f"Response time for {url}: {response_time:.2f} seconds")
                 logging.info(f"Page loaded: {url}")
-                
+
                 # Wait for manual input to proceed with a timeout
                 if self.manual_input:
                     try:
@@ -204,7 +234,7 @@ class WebCrawler:
                         input("Press Enter to continue crawling...")
                     except TimeoutError:
                         logging.warning("Manual input timed out.")
-                
+
                 return self.driver.page_source
             except Exception as e:
                 logging.error(f"Error fetching {url}: {e}")
@@ -224,7 +254,8 @@ class WebCrawler:
         """
         if url in self.redirect_history:
             self.redirect_history[url] += 1
-            if self.redirect_history[url] > 5:  # Threshold for infinite redirects
+            # Threshold for infinite redirects
+            if self.redirect_history[url] > 5:
                 logging.warning(f"Infinite redirect detected at {url}")
                 return True
         else:
@@ -240,9 +271,14 @@ class WebCrawler:
         # Improved rate-limiting logic
         with self.rate_limit_lock:
             elapsed_time = time.time() - self.start_time
-            if self.request_counter >= self.MAX_REQUESTS_PER_MINUTE and elapsed_time < 60:
+            if (
+                self.request_counter >= self.MAX_REQUESTS_PER_MINUTE
+                and elapsed_time < 60
+            ):
                 sleep_time = 60 - elapsed_time
-                logging.info(f"Rate limit reached. Sleeping for {sleep_time:.2f} seconds.")
+                logging.info(
+                    f"Rate limit reached. Sleeping for {sleep_time:.2f} seconds."
+                )
                 time.sleep(sleep_time)
                 self.start_time = time.time()
                 self.request_counter = 0
@@ -250,7 +286,9 @@ class WebCrawler:
 
         with self.visited_urls_lock:  # Ensure thread-safe access to visited_urls
             if url in self.visited_urls or depth > self.max_depth:
-                logging.debug(f"Skipping URL: {url} (already visited or max depth reached)")
+                logging.debug(
+                    f"Skipping URL: {url} (already visited or max depth reached)"
+                )
                 return
             self.visited_urls.add(url)
 
@@ -303,7 +341,7 @@ class WebCrawler:
             logging.error(f"Error during crawling {url}: {e}")
             # Restart the browser if it crashes
             self.restart_browser()
-        
+
         print(f"Finished crawling URL: {url}")
 
     def _scan_vulnerabilities(self, url, forms):
@@ -367,13 +405,13 @@ class WebCrawler:
             form_details = {
                 "action": form.get("action", ""),
                 "method": form.get("method", "GET").upper(),
-                "inputs": []
+                "inputs": [],
             }
             for input_tag in form.find_all("input"):
                 input_details = {
                     "name": input_tag.get("name", ""),
                     "type": input_tag.get("type", "text"),
-                    "value": input_tag.get("value", "")
+                    "value": input_tag.get("value", ""),
                 }
                 form_details["inputs"].append(input_details)
             forms.append(form_details)
@@ -383,7 +421,7 @@ class WebCrawler:
         """Check if URL belongs to the target domain."""
         parsed = urlparse(url)
         return parsed.netloc == self.original_domain
-    
+
     def restart_browser(self):
         """Restart the browser if it crashes or loses connection."""
         logging.info("Restarting browser...")
@@ -416,7 +454,8 @@ class WebCrawler:
         logging.info("Graceful shutdown initiated.")
         self.shutdown_flag.set()  # Signal threads to stop
         try:
-            self.executor.shutdown(wait=True, timeout=30)  # Add timeout for thread pool shutdown
+            # Add timeout for thread pool shutdown
+            self.executor.shutdown(wait=True, timeout=30)
         except Exception as e:
             logging.error(f"Error during executor shutdown: {e}")
         self.close()
@@ -434,7 +473,9 @@ class WebCrawler:
                     elif operation == "save_form":
                         self._save_form(conn, *args)
                 finally:
-                    self.connection_pool.return_connection(conn)  # Ensure connection is returned
+                    self.connection_pool.return_connection(
+                        conn
+                    )  # Ensure connection is returned
                 self.db_queue.task_done()
             except Empty:
                 continue
@@ -455,7 +496,9 @@ class WebCrawler:
                     elif operation == "save_form":
                         self._save_form(conn, *args)
                 finally:
-                    self.connection_pool.return_connection(conn)  # Ensure connection is returned
+                    self.connection_pool.return_connection(
+                        conn
+                    )  # Ensure connection is returned
                 self.db_queue.task_done()
             except sqlite3.OperationalError as e:
                 logging.error(f"Database is locked: {e}")
@@ -467,7 +510,9 @@ class WebCrawler:
         """Save a URL to the database."""
         try:
             cursor = conn.cursor()
-            cursor.execute("INSERT OR IGNORE INTO urls (url, depth) VALUES (?, ?)", (url, depth))  # Use INSERT OR IGNORE
+            cursor.execute(
+                "INSERT OR IGNORE INTO urls (url, depth) VALUES (?, ?)", (url, depth)
+            )  # Use INSERT OR IGNORE
             conn.commit()
         except sqlite3.OperationalError as e:
             logging.error(f"Database operation error: {e}")
@@ -479,7 +524,9 @@ class WebCrawler:
         """Save a form to the database."""
         try:
             cursor = conn.cursor()
-            cursor.execute("INSERT INTO forms (url, form_data) VALUES (?, ?)", (url, str(form)))
+            cursor.execute(
+                "INSERT INTO forms (url, form_data) VALUES (?, ?)", (url, str(form))
+            )
             conn.commit()
         except sqlite3.OperationalError as e:
             logging.error(f"Database operation error: {e}")
@@ -491,20 +538,24 @@ class WebCrawler:
         conn = self.connection_pool.get_connection()
         try:
             cursor = conn.cursor()
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS urls (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     url TEXT NOT NULL UNIQUE,  -- Add UNIQUE constraint to prevent duplicates
                     depth INTEGER NOT NULL
                 )
-            """)
-            cursor.execute("""
+            """
+            )
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS forms (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     url TEXT NOT NULL,
                     form_data TEXT NOT NULL
                 )
-            """)
+            """
+            )
             conn.commit()
         finally:
             self.connection_pool.return_connection(conn)
@@ -522,10 +573,13 @@ class WebCrawler:
         except Exception as e:
             logging.error(f"Error during shutdown: {e}")
 
+
 # Example instantiation (ensure this matches your usage)
 if __name__ == "__main__":
     try:
-        crawler = WebCrawler(base_url="http://example.com", max_depth=3, delay=1, proxy=None)
+        crawler = WebCrawler(
+            base_url="http://example.com", max_depth=3, delay=1, proxy=None
+        )
         crawler.crawl(crawler.base_url)
     except Exception as e:
         logging.error(f"Unhandled exception: {e}")

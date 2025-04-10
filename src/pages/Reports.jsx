@@ -30,6 +30,9 @@ const Reports = () => {
     return (
         <div>
             <h1>Generated Reports</h1>
+            <button onClick={() => setLoading(true) || fetchReports().then(setReports).finally(() => setLoading(false))}>
+                Refresh Reports
+            </button>
             {reports.length === 0 ? (
                 <p>No reports available.</p>
             ) : (
