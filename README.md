@@ -123,26 +123,15 @@ Follow these steps to set up the project:
    ```bash
    pip install -r requirements.txt
    ```
-4. Install Node.js dependencies:
-   ```bash
-   npm install
-   ```
 
 ---
 
 ## 🚀 Usage
 
-1. Start the back-end server:
+Start the back-end server:
    ```bash
    python main.py
    ```
-2. Start the front-end application:
-   ```bash
-   npm run dev
-   ```
-3. Access the application in your browser at `http://localhost:3000`.
-
----
 
 ## 🤝 Contributing
 
