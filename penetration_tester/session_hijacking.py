@@ -68,8 +68,15 @@ def simulate_session_fixation(session_token, new_token):
     Returns:
         str: The fixed session token.
     """
-    logging.info(f"Original token: {session_token}")
-    logging.info(f"Malicious token: {new_token}")
+    logging.warning(f"Simulating session fixation attack. Original token: {session_token}, Malicious token: {new_token}")
+    return new_token
+
+def rotate_token(session_token):
+    """
+    Rotate the session token to prevent hijacking.
+    """
+    new_token = secrets.token_hex(16)
+    logging.info(f"Session token rotated. Old: {session_token}, New: {new_token}")
     return new_token
 
 if __name__ == "__main__":

@@ -120,6 +120,21 @@ class XSSScanner:
         """
         return bool(form.get("inputs") and form.get("action"))
 
+    def load_additional_payloads(self, payload_file):
+        """
+        Load additional XSS payloads from a file.
+
+        Args:
+            payload_file (str): Path to the file containing XSS payloads.
+        """
+        try:
+            with open(payload_file, "r") as f:
+                additional_payloads = f.read().splitlines()
+                self.payloads.extend(additional_payloads)
+                logging.info(f"Loaded {len(additional_payloads)} additional XSS payloads.")
+        except Exception as e:
+            logging.error(f"Error loading additional payloads: {e}")
+
 class AdvancedXSSScanner:
     def __init__(self, driver):
         self.driver = driver

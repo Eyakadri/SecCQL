@@ -129,3 +129,17 @@ class IDORScanner:
             return all([result.scheme, result.netloc])
         except ValueError:
             return False
+
+    def generate_test_ids(self, start=1, end=10):
+        """
+        Generate a range of test IDs dynamically.
+
+        Args:
+            start (int): Starting ID.
+            end (int): Ending ID.
+
+        Returns:
+            list: List of generated test IDs.
+        """
+        self.test_ids = [str(i) for i in range(start, end + 1)]
+        logging.info(f"Generated test IDs: {self.test_ids}")

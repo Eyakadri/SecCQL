@@ -41,6 +41,7 @@ class Database:
         try:
             with self.conn:  # Use context manager for transactions
                 self.cursor.execute("INSERT OR IGNORE INTO urls (url, depth) VALUES (?, ?)", (url, depth))
+                logging.info(f"URL saved to database: {url} with depth {depth}")
         except sqlite3.Error as e:
             logging.error(f"Error saving URL {url} with depth {depth}: {e}")
 

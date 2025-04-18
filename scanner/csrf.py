@@ -53,3 +53,21 @@ class CSRFScanner:
             logging.error(f"Error testing CSRF on {action}: {e}")
 
         return False
+
+    def check_anti_csrf_headers(self, headers):
+        """
+        Check for anti-CSRF headers in the response.
+
+        Args:
+            headers (dict): HTTP response headers.
+
+        Returns:
+            bool: True if anti-CSRF headers are present, False otherwise.
+        """
+        anti_csrf_headers = ["x-csrf-token", "x-xsrf-token"]
+        for header in anti_csrf_headers:
+            if header in headers:
+                logging.info(f"Anti-CSRF header detected: {header}")
+                return True
+        logging.warning("No anti-CSRF headers detected.")
+        return False

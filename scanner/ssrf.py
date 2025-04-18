@@ -101,3 +101,17 @@ class SSRFScanner:
             return all([result.scheme, result.netloc])
         except ValueError:
             return False
+
+    def validate_payloads(self):
+        """
+        Validate SSRF payloads to ensure they are well-formed URLs.
+
+        Returns:
+            bool: True if all payloads are valid, False otherwise.
+        """
+        for payload in self.payloads:
+            if not self._is_valid_url(payload):
+                logging.warning(f"Invalid SSRF payload detected: {payload}")
+                return False
+        logging.info("All SSRF payloads are valid.")
+        return True
