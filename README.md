@@ -21,27 +21,78 @@ SecCQL (Secure Query Language) is a cutting-edge security framework designed to 
 The project is organized into several modules, each serving a specific purpose:
 
 ```
-SecCQL/
-├── ai/                     # AI-powered tools for anomaly detection and payload generation
-├── auditor/                # Modules for auditing security compliance and error handling
-├── cli/                    # Command-line interface for interacting with the system
-├── config/                 # Configuration files and settings
-├── crawler/                # Web crawler for data collection and analysis
-├── database/               # Database interaction and management
-├── penetration_tester/     # Tools for simulating penetration tests
-├── public/                 # Static files for the front-end
-├── reporter/               # Reporting tools and templates
-├── scanner/                # Modules for scanning vulnerabilities
-├── src/                    # Front-end application built with React
-├── tests/                  # Unit and integration tests
-├── .babelrc                # Babel configuration
-├── .gitignore              # Git ignore file
-├── LICENSE                 # License information
-├── README.md               # Project documentation
-├── main.py                 # Entry point for the application
-├── package.json            # Node.js dependencies
-├── requirements.txt        # Python dependencies
-├── vite.config.js          # Vite configuration for the front-end
+├── README.md
+├── ai
+│   ├── __init__.py
+│   ├── anomaly_detection.py
+│   └── payload_generator.py
+├── auditor
+│   ├── README.md
+│   ├── __init__.py
+│   ├── cert_transparency.py
+│   ├── core.py
+│   ├── error_handling_checker.py
+│   ├── gdpr_checker.py
+│   ├── http_header_analyzer.py
+│   └── ssl_tls_checker.py
+├── cli
+│   ├── __init__.py
+│   └── commands.py
+├── config
+│   ├── __init__.py
+│   └── settings.py
+├── crawler
+│   ├── README.md
+│   ├── __init__.py
+│   ├── crawler.py
+│   ├── crawler_config.ini
+│   ├── db_handler.py
+│   ├── gui.py
+│   ├── selenium_handler.py
+│   └── utils.py
+├── crawler.db
+├── crawler.log
+├── database
+│   └── __init__.py
+├── main.py
+├── penetration_tester
+│   ├── README.md
+│   ├── __init__.py
+│   ├── brute_force.py
+│   ├── business_logic.py
+│   ├── file_upload.py
+│   ├── rce.py
+│   └── session_hijacking.py
+├── reporter
+│   ├── README.md
+│   ├── __init__.py
+│   ├── mitre.py
+│   ├── report_generator.py
+│   ├── summary.py
+│   └── templates
+│       ├── base.html
+│       └── vulnerability_report.html
+├── requirements.txt
+├── scanner
+│   ├── README.md
+│   ├── __init__.py
+│   ├── command_injection.py
+│   ├── csrf.py
+│   ├── idor.py
+│   ├── sqli.py
+│   ├── ssrf.py
+│   ├── utils.py
+│   └── xss.py
+└── tests
+    ├── __init__.py
+    ├── test_auditor.py
+    ├── test_brute_force.py
+    ├── test_business_logic.py
+    ├── test_crawler.py
+    ├── test_file_upload.py
+    ├── test_rce.py
+    ├── test_scanner.py
+    └── test_session_hijacking.py
 ```
 
 ---
