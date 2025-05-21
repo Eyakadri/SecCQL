@@ -5,6 +5,8 @@ MITRE_MAPPING = {
     "SSRF": "T1071.001",
     "IDOR": "T1078",
     "Command Injection": "T1059",
+    "File Upload": "T1203",  # Added new mapping
+    "Business Logic Flaw": "T1583",  # Added new mapping
 }
 
 def map_to_mitre(vulnerabilities):

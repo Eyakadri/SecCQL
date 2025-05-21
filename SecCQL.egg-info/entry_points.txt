@@ -1,0 +1,3 @@
+[console_scripts]
+SecCQL = cli.console:main
+

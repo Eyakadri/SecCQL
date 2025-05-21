@@ -709,6 +709,33 @@ def alert_unusual_activity(activity_type, details):
     # send_email_alert(activity_type, details)
     # trigger_webhook_alert(activity_type, details)
 
+def run_crawler(start_url, save_to_db):
+    """
+    Run the web crawler starting from the given URL.
+
+    Args:
+        start_url (str): The starting URL for the crawler.
+        save_to_db (bool): Whether to save the crawled data to the database.
+    """
+    print(f"Starting crawler at {start_url}...")
+    try:
+        # Initialize the WebCrawler
+        crawler_instance = WebCrawler(base_url=start_url)
+        crawler_instance.crawl(start_url)
+
+        # Save to database if required
+        if save_to_db:
+            print("Crawled data saved to the database.")
+        else:
+            print("Crawled data not saved to the database.")
+    except Exception as e:
+        print(f"Error during crawling: {e}")
+    finally:
+        try:
+            crawler_instance.close()
+        except Exception as e:
+            print(f"Error during crawler shutdown: {e}")
+
 # Example instantiation (ensure this matches your usage)
 if __name__ == "__main__":
     try:

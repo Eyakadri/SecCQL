@@ -3,3 +3,9 @@ requests
 beautifulsoup4
 selenium
 selenium-stealth
+jinja2
+weasyprint
+transformers
+mock
+rich
+cmd2

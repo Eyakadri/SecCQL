@@ -1,6 +1,6 @@
 import unittest
 import time
-from penetration_tester.brute_force import simulate_login, hash_password, is_password_strong
+from scanner.brute_force import simulate_login, hash_password, is_password_strong
 
 class TestBruteForce(unittest.TestCase):
     def test_successful_login(self):

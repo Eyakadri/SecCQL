@@ -1,0 +1,4 @@
+InquirerPy
+click
+cmd2
+rich

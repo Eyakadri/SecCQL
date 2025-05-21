@@ -1,6 +1,6 @@
 import unittest
 from datetime import datetime, timedelta
-from penetration_tester.session_hijacking import is_token_secure, is_token_expired, simulate_session_fixation, rotate_token
+from scanner.session_hijacking import is_token_secure, is_token_expired, simulate_session_fixation, rotate_token
 
 class TestSessionHijacking(unittest.TestCase):
     def test_is_token_secure(self):

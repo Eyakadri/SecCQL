@@ -5,7 +5,7 @@ import logging
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 
-def test_discount_logic(user_role, discount):
+def validate_discount_logic(user_role, discount):
     """
     Test for business logic flaws in discount application.
 
@@ -34,4 +34,4 @@ def test_discount_logic(user_role, discount):
 
 if __name__ == "__main__":
     # Example usage
-    test_discount_logic("admin", 60)  # Replace with test cases
+    validate_discount_logic("admin", 60)  # Replace with test cases

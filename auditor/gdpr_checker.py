@@ -19,8 +19,14 @@ def check_gdpr_compliance(url):
             "uses_secure_cookies": all(cookie.secure for cookie in cookies),
             "has_privacy_policy": "privacy policy" in response.text.lower(),
         }
-        logging.info(f"GDPR compliance check for {url} completed.")
+        logging.info(f"GDPR compliance check for {url} completed successfully.")
+        print(f"GDPR compliance results for {url}: {compliance}")  # Display results in the console
         return compliance
+    except requests.exceptions.Timeout:
+        logging.error(f"GDPR compliance check for {url} timed out.")
+        print(f"GDPR compliance check for {url} timed out.")  # Display error in the console
+        return {"error": "Request timed out"}
     except Exception as e:
         logging.error(f"Failed to check GDPR compliance for {url}: {e}")
+        print(f"Failed to check GDPR compliance for {url}: {e}")  # Display error in the console
         return {"error": str(e)}

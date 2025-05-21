@@ -1,5 +1,5 @@
 import unittest
-from penetration_tester.rce import execute_command
+from scanner.rce import execute_command
 
 class TestRCE(unittest.TestCase):
     def test_safe_command(self):

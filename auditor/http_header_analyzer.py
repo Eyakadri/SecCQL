@@ -21,8 +21,11 @@ def analyze_headers(url):
             "X-Frame-Options": headers.get("X-Frame-Options", "Missing"),
             "Referrer-Policy": headers.get("Referrer-Policy", "Missing"),
         }
-        logging.info(f"HTTP header analysis for {url} completed.")
+        logging.info(f"HTTP header analysis for {url} completed successfully.")
         return results
+    except requests.exceptions.Timeout:
+        logging.error(f"HTTP header analysis for {url} timed out.")
+        return {"error": "Request timed out"}
     except Exception as e:
         logging.error(f"Failed to analyze headers for {url}: {e}")
         return {"error": str(e)}

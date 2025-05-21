@@ -184,5 +184,7 @@ def main():
         except Exception as e:
             logging.error(f"Failed to generate report: {e}")
 
+from cli.console import main
+
 if __name__ == "__main__":
     main()

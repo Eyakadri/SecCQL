@@ -13,6 +13,11 @@ The `auditor` module analyzes web application configurations for security issues
 from auditor.ssl_tls_checker import check_ssl
 from auditor.http_header_analyzer import analyze_headers
 
-check_ssl("https://example.com")
-analyze_headers("https://example.com")
+# Check SSL/TLS configuration
+ssl_results = check_ssl("example.com")
+print(ssl_results)
+
+# Analyze HTTP headers
+header_results = analyze_headers("https://example.com")
+print(header_results)
 ```

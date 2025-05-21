@@ -2,6 +2,7 @@ import requests
 import logging
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 from bs4 import BeautifulSoup  # Added for dynamic ID extraction
+from .utils import send_request
 
 class IDORScanner:
     def __init__(self, test_ids=None):
@@ -75,14 +76,11 @@ class IDORScanner:
         """
         Send a request to the modified URL and check for unauthorized access.
         """
-        try:
-            response = session.get(url, timeout=10)
-            if response.status_code == 200 and "unauthorized" not in response.text.lower():
-                logging.info(f"Valid response received for {url}")
-                logging.warning(f"Potential IDOR vulnerability found at {url}")
-                return True
-        except requests.RequestException as e:
-            logging.error(f"Error sending request to {url}: {e}")
+        response = send_request(url, session=session)
+        if response and response.status_code == 200 and "unauthorized" not in response.text.lower():
+            logging.info(f"Valid response received for {url}")
+            logging.warning(f"Potential IDOR vulnerability found at {url}")
+            return True
         return False
 
     def _extract_ids_from_page(self, url, session):
