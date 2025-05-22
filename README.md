@@ -23,6 +23,7 @@
 - Compliance (GDPR/OWASP) audits
 
 ## 📂 Project Structure
+---
 
 SECCQL/
     ├── auditor/
@@ -37,8 +38,23 @@ SECCQL/
 ├── requirements.txt
 ├── README.md
 
-
 ---
+## Directory Overview
+
+- **auditor/**: Contains code for auditing functionality
+- **cli/**: Command-line interface components
+- **config/**: Configuration files and settings
+- **crawler/**: Web crawling components
+- **reporter/**: Reporting and output generation
+- **scanner/**: Scanning functionality
+- **tests/**: Test cases and testing utilities
+
+## Key Files
+
+- `main.py`: Main entry point for the application
+- `setup.py`: Installation and setup configuration
+- `requirements.txt`: Python dependencies
+- `README.md`: Project documentation (this file)
 
 ## ✨ Features
 
