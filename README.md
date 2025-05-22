@@ -1,4 +1,4 @@
-# ⚔️ secCQL — Modular Web Application Pentest CLI
+# ⚔️ secCQL — Security Testing Framework For Web Applications
 ![Python](https://img.shields.io/badge/Python-3.9%2B-blue) ![License](https://img.shields.io/badge/License-MIT-yellow)
 
 **seccql** is a powerful, modular, and interactive command-line toolkit for advanced web application penetration testing. Built by hackers for hackers, `seccql` is designed to scan, audit, exploit, and report with precision — all from your terminal.
