@@ -23,7 +23,22 @@
 - Compliance (GDPR/OWASP) audits
 
 ## 📂 Project Structure
-<pre lang="markdown"><code>``` SECCQL/ ├── auditor/ ├── cli/ ├── config/ ├── crawler/ ├── reporter/ ├── scanner/ ├── tests/ ├── main.py ├── setup.py ├── requirements.txt └── README.md ```</code></pre>
+
+```
+SECCQL/
+    ├── auditor/
+    ├── cli/
+    ├── config/
+    ├── crawler/
+    ├── reporter/
+    ├── scanner/
+    └── tests/
+├── main.py
+├── setup.py
+├── requirements.txt
+├── README.md
+```
+
 ## Directory Overview
 
 - **auditor/**: Contains code for auditing functionality
