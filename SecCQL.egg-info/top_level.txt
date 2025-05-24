@@ -1,7 +1,0 @@
-auditor
-cli
-config
-crawler
-reporter
-scanner
-tests
