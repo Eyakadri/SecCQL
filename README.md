@@ -1,4 +1,4 @@
-# ⚔️ SecCQL: Advanced Web Application Security Testing Framework ⚔️
+# ⚔️ SecCQL: Advanced Web Application Security Testing Framework
 
 [![Python Version](https://img.shields.io/badge/Python-3.9%2B-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -96,15 +96,6 @@ Once inside the console, use `help` or `?` to see available commands. Here are s
     SecCQL > report
     # Enter report name and select format (text, json, csv)
     ```
-
-*   **Use Specific Modules (Example):**
-    ```
-    SecCQL > use sqli_scanner
-    SecCQL (sqli_scanner) > set target http://vulnerable.site
-    SecCQL (sqli_scanner) > run
-    SecCQL (sqli_scanner) > back
-    ```
-
 ---
 
 ## 📂 Project Structure
