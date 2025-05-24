@@ -9,3 +9,4 @@ transformers
 mock
 rich
 cmd2
+cloudscraper

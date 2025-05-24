@@ -6,7 +6,7 @@ setup(
     version="1.0",
     packages=find_packages(),
     install_requires=[
-        "click", "InquirerPy", "rich", "cmd2"
+        "click", "InquirerPy", "rich", "cmd2", "cloudscraper"
     ],
     entry_points={
         "console_scripts": [

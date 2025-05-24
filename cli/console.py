@@ -19,8 +19,12 @@ import time
 from typing import List, Dict, Any
 import os
 from pathlib import Path
-import pickle
 import importlib
+import json
+import threading
+import validators
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
 
 from auditor.http_header_analyzer import analyze_headers
 from auditor.ssl_tls_checker import check_ssl
@@ -43,13 +47,38 @@ HISTORY_FILE = os.path.expanduser("~/.seccql_history")
 CONFIG_DIR = os.path.expanduser("~/.seccql")
 MODULES_DIR = "modules"
 
+def is_valid_url(url: str) -> bool:
+    return validators.url(url)
+
+def is_valid_port(port_str: str) -> bool:
+    if not port_str.isdigit():
+        return False
+    port = int(port_str)
+    return 1 <= port <= 65535
+
+def clear_screen():
+    """Cross-platform clear screen."""
+    os.system('cls' if os.name == 'nt' else 'clear')
+
+def create_webdriver():
+    """Create a headless Selenium WebDriver instance."""
+    options = Options()
+    options.add_argument("--headless")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--no-sandbox")
+    try:
+        driver = webdriver.Chrome(options=options)
+        return driver
+    except Exception as e:
+        console.print(f"[red]Failed to initialize Selenium WebDriver: {e}[/]")
+        return None
+
 @with_default_category("Core Commands")
 @with_category("CLI Commands")
 class SecCQLConsole(cmd2.Cmd):
     """SecCQL Advanced Penetration Testing Console"""
 
     def __init__(self):
-        # Persistent history setup
         self._create_config_dir()
         super().__init__(
             persistent_history_file=HISTORY_FILE,
@@ -58,27 +87,24 @@ class SecCQLConsole(cmd2.Cmd):
             allow_cli_args=False
         )
 
-        # Custom prompt with dynamic context
         self.prompt = "SecCQL > "
         self.intro = self._get_banner()
 
-        # Module system
         self.current_module = None
         self.available_modules = self._load_modules()
 
-        # Session state
         self.session_data = {
             'targets': [],
             'scan_results': {},
             'credentials': {}
         }
 
+        self.webdriver = create_webdriver()
+
     def _create_config_dir(self):
-        """Ensure config directory exists"""
         Path(CONFIG_DIR).mkdir(exist_ok=True)
 
     def _get_banner(self):
-        """Generate the ASCII art banner"""
         return """
 ███████╗███████╗ ██████╗ ██████╗ ██████╗ ██╗
 ██╔════╝██╔════╝██╔════╝██╔════╝██╔═══██╗██║
@@ -92,7 +118,6 @@ SecCQL - Security Testing Framework For Web Applications
 Type help or ? to get started
 """
 
-    # ----- Scan Command -----
     scan_parser = cmd2.Cmd2ArgumentParser()
     scan_parser.add_argument('target', nargs='?', help="Target URL or IP (optional for interactive mode)")
     scan_parser.add_argument('-p', '--profile', choices=['fast', 'full', 'stealth'], default='fast')
@@ -117,7 +142,7 @@ Type help or ? to get started
                     "type": "input",
                     "name": "url",
                     "message": "Enter target URL:",
-                    "validate": lambda val: val.startswith(('http://', 'https://')) or "URL must start with http:// or https://"
+                    "validate": lambda val: is_valid_url(val) or "Invalid URL format"
                 }
             ]
             answers = prompt(questions)
@@ -127,52 +152,10 @@ Type help or ? to get started
             try:
                 console.print(f"[cyan]🚀 Running {scan_type} scan on {url}...[/]")
 
-                if scan_type == "SQL Injection":
-                    scanner = SQLInjectionScanner(driver=None)
-                    form = {
-                        "action": url,
-                        "method": "post",
-                        "inputs": [{"name": "username"}, {"name": "password"}],  # Example inputs
-                    }
-                    try:
-                        result = scanner.test_sql_injection(form, url)
-                    except ValueError as e:
-                        console.print(f"[red]❌ Error during SQL Injection scan: {e}[/]")
-                        return False
-                elif scan_type == "XSS":
-                    scanner = XSSScanner(driver=None)  # Replace `None` with a Selenium WebDriver instance if needed
-                    result = scanner.test_xss({"action": url, "inputs": []}, url)
-                elif scan_type == "CSRF":
-                    scanner = CSRFScanner(driver=None)  # Replace `None` with a Selenium WebDriver instance if needed
-                    result = scanner.test_csrf({"action": url, "inputs": []}, url)
-                elif scan_type == "Command Injection":
-                    scanner = CommandInjectionScanner()
-                    result = scanner.test_command_injection({"action": url, "inputs": []}, url)
-                elif scan_type == "SSRF":
-                    scanner = SSRFScanner()
-                    result = scanner.test_ssrf(url)
-                elif scan_type == "IDOR":
-                    scanner = IDORScanner()
-                    result = scanner.test_idor(url)
-                elif scan_type == "Brute Force":
-                    self._run_brute_force_test()
-                elif scan_type == "Remote Code Execution (RCE)":
-                    self._run_rce_test()
-                elif scan_type == "Business Logic":
-                    self._run_business_logic_test()
-                elif scan_type == "File Upload":
-                    self._run_file_upload_test()
-                elif scan_type == "Session Hijacking":
-                    self._run_session_hijacking_test()
-                else:
-                    console.print("[red]❌ Unknown scan type selected[/]")
-                    return False
-
-                if result:
-                    console.print(f"[green]✅ {scan_type} scan completed successfully! Vulnerability detected.[/]")
-                else:
-                    console.print(f"[yellow]⚠ {scan_type} scan completed. No vulnerabilities detected.[/]")
-                return True
+                # Run scan in a thread to keep UI responsive
+                thread = threading.Thread(target=self._run_interactive_scan, args=(scan_type, url))
+                thread.start()
+                thread.join()
 
             except KeyboardInterrupt:
                 console.print("[yellow]⚠ Scan cancelled by user[/]")
@@ -182,6 +165,10 @@ Type help or ? to get started
                 return False
         else:
             # CLI mode
+            if not is_valid_url(args.target):
+                console.print("[red]Invalid target URL provided.[/]")
+                return False
+
             with Progress() as progress:
                 task = progress.add_task(f"[cyan]Scanning {args.target}", total=100)
                 for i in range(10):
@@ -197,17 +184,73 @@ Type help or ? to get started
             }
 
             if args.output:
-                self._save_results(args.output)
-                console.print(f"[green]✓ Results saved to {args.output}[/]")
+                try:
+                    self._save_results(args.output)
+                    console.print(f"[green]✓ Results saved to {args.output}[/]")
+                except Exception as e:
+                    console.print(f"[red]Failed to save results: {e}[/]")
             else:
                 self._display_scan_results(args.target)
             return True
+
+    def _run_interactive_scan(self, scan_type: str, url: str):
+        """Run interactive scan with proper WebDriver and error handling."""
+        result = None
+        try:
+            if scan_type == "SQL Injection":
+                scanner = SQLInjectionScanner(driver=self.webdriver)
+                form = {
+                    "action": url,
+                    "method": "post",
+                    "inputs": [{"name": "username"}, {"name": "password"}],
+                }
+                result = scanner.test_sql_injection(form, url)
+            elif scan_type == "XSS":
+                scanner = XSSScanner(driver=self.webdriver)
+                result = scanner.test_xss({"action": url, "inputs": []}, url)
+            elif scan_type == "CSRF":
+                scanner = CSRFScanner(driver=self.webdriver)
+                result = scanner.test_csrf({"action": url, "inputs": []}, url)
+            elif scan_type == "Command Injection":
+                scanner = CommandInjectionScanner()
+                result = scanner.test_command_injection({"action": url, "inputs": []}, url)
+            elif scan_type == "SSRF":
+                scanner = SSRFScanner()
+                result = scanner.test_ssrf(url)
+            elif scan_type == "IDOR":
+                scanner = IDORScanner()
+                result = scanner.test_idor(url)
+            elif scan_type == "Brute Force":
+                self._run_brute_force_test()
+                return
+            elif scan_type == "Remote Code Execution (RCE)":
+                self._run_rce_test()
+                return
+            elif scan_type == "Business Logic":
+                self._run_business_logic_test()
+                return
+            elif scan_type == "File Upload":
+                self._run_file_upload_test()
+                return
+            elif scan_type == "Session Hijacking":
+                self._run_session_hijacking_test()
+                return
+            else:
+                console.print("[red]❌ Unknown scan type selected[/]")
+                return
+
+            if result:
+                console.print(f"[green]✅ {scan_type} scan completed successfully! Vulnerability detected.[/]")
+            else:
+                console.print(f"[yellow]⚠ {scan_type} scan completed. No vulnerabilities detected.[/]")
+        except Exception as e:
+            console.print(f"[red]Error during {scan_type} scan: {e}[/")
 
     def _run_scan_module(self, target: str, profile: str):
         """Execute the appropriate scanner module"""
         console.print(f"[yellow]Running {profile} scan on {target}[/]")
 
-        # Example: Simulate scan results
+        # Placeholder for real scan logic; simulate results
         vulnerabilities = [
             {"type": "XSS", "description": "Cross-site scripting detected.", "severity": "High", "recommendation": "Sanitize inputs."},
             {"type": "SQL Injection", "description": "SQLi vulnerability found.", "severity": "Critical", "recommendation": "Use parameterized queries."},
@@ -222,26 +265,38 @@ Type help or ? to get started
 
     def _display_scan_results(self, target: str):
         """Show results in a rich table"""
+        results = self.session_data['scan_results'].get(target)
+        if not results or 'vulnerabilities' not in results:
+            console.print(f"[yellow]No scan results found for {target}[/]")
+            return
+
         table = Table(title=f"Scan Results for {target}")
         table.add_column("Vulnerability", style="cyan")
         table.add_column("Severity", style="red")
-        table.add_column("Confidence", style="yellow")
+        table.add_column("Recommendation", style="green")
 
-        # Example data
-        table.add_row("SQL Injection", "High", "90%")
-        table.add_row("XSS", "Medium", "75%")
+        for vuln in results['vulnerabilities']:
+            table.add_row(vuln.get("type", "N/A"), vuln.get("severity", "N/A"), vuln.get("recommendation", "N/A"))
+
         console.print(table)
 
     def _save_results(self, filename: str):
-        """Save scan results to file"""
-        with open(filename, 'wb') as f:
-            pickle.dump(self.session_data['scan_results'], f)
+        """Save scan results to JSON file"""
+        try:
+            with open(filename, 'w') as f:
+                json.dump(self.session_data['scan_results'], f, indent=2)
+        except Exception as e:
+            console.print(f"[red]Failed to save results: {e}[/]")
 
-    # ----- Module System -----
     def _load_modules(self) -> Dict[str, Any]:
         """Dynamically load available modules"""
         modules = {}
-        for module_file in Path(MODULES_DIR).glob('*.py'):
+        modules_path = Path(MODULES_DIR)
+        if not modules_path.exists() or not modules_path.is_dir():
+            console.print(f"[yellow]Modules directory '{MODULES_DIR}' not found. Skipping module loading.[/]")
+            return modules
+
+        for module_file in modules_path.glob('*.py'):
             if module_file.stem == '__init__':
                 continue
             try:
@@ -261,8 +316,12 @@ Type help or ? to get started
             self.current_module = args.module
             self.prompt = f"SecCQL ({args.module}) > "
             console.print(f"[green]Using module: {args.module}[/]")
-            if hasattr(self.available_modules[args.module], 'setup'):
-                self.available_modules[args.module].setup(self)
+            mod = self.available_modules[args.module]
+            if hasattr(mod, 'setup') and callable(mod.setup):
+                try:
+                    mod.setup(self)
+                except Exception as e:
+                    console.print(f"[red]Error during module setup: {e}[/]")
         else:
             console.print(f"[red]Module not found: {args.module}[/]")
             console.print("Available modules:")
@@ -272,15 +331,18 @@ Type help or ? to get started
     def do_back(self, _):
         """Exit the current module"""
         if self.current_module:
-            if hasattr(self.available_modules[self.current_module], 'cleanup'):
-                self.available_modules[self.current_module].cleanup(self)
+            mod = self.available_modules.get(self.current_module)
+            if mod and hasattr(mod, 'cleanup') and callable(mod.cleanup):
+                try:
+                    mod.cleanup(self)
+                except Exception as e:
+                    console.print(f"[red]Error during module cleanup: {e}[/]")
             self.current_module = None
             self.prompt = "SecCQL > "
             console.print("[green]Returned to main console[/]")
         else:
             console.print("[yellow]Not currently in a module[/]")
 
-    # ----- Session Management -----
     def do_sessions(self, _):
         """List active sessions"""
         table = Table(title="Active Sessions")
@@ -289,10 +351,9 @@ Type help or ? to get started
         table.add_column("Status")
 
         for target, data in self.session_data['scan_results'].items():
-            table.add_row(str(hash(target)), target, data['status'])
+            table.add_row(str(hash(target)), target, data.get('status', 'unknown'))
         console.print(table)
 
-    # ----- Other Commands -----
     def do_audit(self, _):
         """Perform an audit."""
         questions = [
@@ -308,21 +369,19 @@ Type help or ? to get started
 
         results = []
         if audit_type == "API Security":
-            api_endpoints = [{"url": "/api/login", "requires_auth": False}]  # Example data
+            api_endpoints = [{"url": "/api/login", "requires_auth": False}]
             results.extend(check_api_security(api_endpoints))
         elif audit_type == "Cookie Security":
-            cookies = [{"name": "session", "secure": False, "httpOnly": True}]  # Example data
+            cookies = [{"name": "session", "secure": False, "httpOnly": True}]
             results.extend(check_cookie_security(cookies))
         elif audit_type == "Content Security Policy (CSP)":
-            headers = {"Content-Security-Policy": ""}  # Example data
+            headers = {"Content-Security-Policy": ""}
             results.extend(check_csp(headers))
         elif audit_type == "All":
-            # Run all checks
             results.extend(check_api_security([{"url": "/api/login", "requires_auth": False}]))
             results.extend(check_cookie_security([{"name": "session", "secure": False, "httpOnly": True}]))
             results.extend(check_csp({"Content-Security-Policy": ""}))
 
-        # Generate a report
         reporter = ReportGenerator()
         reporter.generate_audit_report(results, "audit_report.html")
         console.print("[green]Audit completed. Report saved to audit_report.html[/]")
@@ -348,7 +407,6 @@ Type help or ? to get started
 
         console.print(f"[cyan]Generating {report_name} report in {report_format} format...[/]")
 
-        # Use real scan results from session data
         vulnerabilities = []
         for target, results in self.session_data['scan_results'].items():
             vulnerabilities.extend(results.get('vulnerabilities', []))
@@ -360,14 +418,16 @@ Type help or ? to get started
         generator = ReportGenerator()
         output_file = f"{report_name}.{report_format}"
 
-        if report_format == "text":
-            generator.generate_text_report(vulnerabilities, output_file)
-        elif report_format == "json":
-            generator.generate_json_report(vulnerabilities, output_file)
-        elif report_format == "csv":
-            generator.generate_csv_report(vulnerabilities, output_file)
-
-        console.print(f"[green]Report generated: {output_file}[/]")
+        try:
+            if report_format == "text":
+                generator.generate_text_report(vulnerabilities, output_file)
+            elif report_format == "json":
+                generator.generate_json_report(vulnerabilities, output_file)
+            elif report_format == "csv":
+                generator.generate_csv_report(vulnerabilities, output_file)
+            console.print(f"[green]Report generated: {output_file}[/]")
+        except Exception as e:
+            console.print(f"[red]Failed to generate report: {e}[/]")
 
     def do_crawl(self, _):
         """Start the web crawler."""
@@ -376,6 +436,7 @@ Type help or ? to get started
                 "type": "input",
                 "name": "start_url",
                 "message": "Enter starting URL:",
+                "validate": lambda val: is_valid_url(val) or "Invalid URL format"
             },
             {
                 "type": "confirm",
@@ -386,245 +447,92 @@ Type help or ? to get started
         ]
         answers = prompt(questions)
         console.print(f"[cyan]Crawling from {answers['start_url']}...[/]")
-        run_crawler(answers['start_url'], answers['save_to_db'])
+        try:
+            run_crawler(answers['start_url'], answers['save_to_db'])
+        except Exception as e:
+            console.print(f"[red]Crawler error: {e}[/]")
 
     def _run_brute_force_test(self):
-        """Perform brute force attack simulation."""
         questions = [
-            {
-                "type": "input",
-                "name": "username",
-                "message": "Enter username:",
-            },
-            {
-                "type": "input",
-                "name": "password",
-                "message": "Enter password:",
-            },
-            {
-                "type": "input",
-                "name": "ip_address",
-                "message": "Enter IP address:",
-            },
+            {"type": "input", "name": "username", "message": "Enter username:"},
+            {"type": "input", "name": "password", "message": "Enter password:"},
+            {"type": "input", "name": "ip_address", "message": "Enter IP address:"},
         ]
         answers = prompt(questions)
-        brute_force.simulate_login(
-            username=answers["username"],
-            password=answers["password"],
-            attempt_tracker={},
-            ip_address=answers["ip_address"]
-        )
+        try:
+            brute_force.simulate_login(
+                username=answers["username"],
+                password=answers["password"],
+                attempt_tracker={},
+                ip_address=answers["ip_address"]
+            )
+            console.print("[green]Brute force simulation completed.[/]")
+        except Exception as e:
+            console.print(f"[red]Brute force simulation failed: {e}[/]")
 
     def _run_rce_test(self):
-        """Perform remote code execution simulation."""
-        questions = [
-            {
-                "type": "input",
-                "name": "command",
-                "message": "Enter command to execute:",
-            }
-        ]
+        questions = [{"type": "input", "name": "command", "message": "Enter command to execute:"}]
         answers = prompt(questions)
-        result = rce.execute_command(answers["command"])
-        if result:
-            console.print(f"[green]Command executed successfully: {result}[/]")
-        else:
-            console.print("[red]Command execution failed or blocked[/]")
+        try:
+            result = rce.execute_command(answers["command"])
+            if result:
+                console.print(f"[green]Command executed successfully: {result}[/]")
+            else:
+                console.print("[red]Command execution failed or blocked[/]")
+        except Exception as e:
+            console.print(f"[red]RCE test failed: {e}[/]")
 
     def _run_business_logic_test(self):
-        """Perform business logic vulnerability testing."""
-        questions = [
-            {
-                "type": "list",
-                "name": "user_role",
-                "message": "Select user role:",
-                "choices": ["admin", "user", "guest"],
-            },
-            {
-                "type": "input",
-                "name": "discount",
-                "message": "Enter discount percentage:",
-                "validate": lambda val: val.isdigit() and 0 <= int(val) <= 100 or "Discount must be between 0 and 100",
-            },
-        ]
-        answers = prompt(questions)
-        result = business_logic.test_discount_logic(
-            user_role=answers["user_role"],
-            discount=float(answers["discount"])
-        )
-        if result:
-            console.print("[green]Business logic test passed[/]")
-        else:
-            console.print("[red]Business logic test failed[/]")
+        try:
+            business_logic.run_business_logic_tests()
+            console.print("[green]Business logic tests completed.[/]")
+        except Exception as e:
+            console.print(f"[red]Business logic tests failed: {e}[/]")
 
     def _run_file_upload_test(self):
-        """Perform file upload security testing."""
-        questions = [
-            {
-                "type": "input",
-                "name": "file_path",
-                "message": "Enter file path:",
-            },
-            {
-                "type": "input",
-                "name": "ip_address",
-                "message": "Enter IP address:",
-            },
-        ]
+        questions = [{"type": "input", "name": "file_path", "message": "Enter file path to upload:"}]
         answers = prompt(questions)
-        result = file_upload.process_file_upload(
-            file_path=answers["file_path"],
-            ip_address=answers["ip_address"]
-        )
-        if result["success"]:
-            console.print(f"[green]File uploaded successfully. Checksum: {result['checksum']}[/]")
-        else:
-            console.print(f"[red]File upload failed: {result['message']}[/]")
+        try:
+            file_upload.test_file_upload(answers["file_path"])
+            console.print("[green]File upload test completed.[/]")
+        except Exception as e:
+            console.print(f"[red]File upload test failed: {e}[/]")
 
     def _run_session_hijacking_test(self):
-        """Perform session hijacking simulation."""
-        questions = [
-            {
-                "type": "input",
-                "name": "session_token",
-                "message": "Enter session token:",
-            },
-        ]
-        answers = prompt(questions)
-        is_secure = session_hijacking.is_token_secure(answers["session_token"])
-        if is_secure:
-            console.print("[green]Session token is secure[/]")
+        try:
+            session_hijacking.test_session_hijacking()
+            console.print("[green]Session hijacking test completed.[/]")
+        except Exception as e:
+            console.print(f"[red]Session hijacking test failed: {e}[/]")
+
+    clear_parser = cmd2.Cmd2ArgumentParser()
+    clear_parser.add_argument('target', nargs='?', help="Target to clear session data for (optional)")
+
+    @with_argparser(clear_parser)
+    def do_clear(self, args):
+        """Clear session data or screen."""
+        if args.target:
+            if args.target in self.session_data['scan_results']:
+                del self.session_data['scan_results'][args.target]
+                console.print(f"[green]Cleared session data for {args.target}[/]")
+            else:
+                console.print(f"[yellow]No session data found for {args.target}[/]")
         else:
-            console.print("[red]Session token is not secure[/]")
+            clear_screen()
+            console.print("[green]Screen cleared.[/]")
 
-    # ----- Auditor Commands -----
-    def do_audit_ssl(self, args):
-        """Check SSL/TLS configuration for a target."""
-        questions = [
-            {
-                "type": "input",
-                "name": "hostname",
-                "message": "Enter hostname (e.g., example.com):",
-            },
-            {
-                "type": "input",
-                "name": "port",
-                "message": "Enter port (default: 443):",
-                "default": "443",
-            },
-        ]
-        answers = prompt(questions)
-        hostname = answers["hostname"]
-        port = int(answers["port"])
-        result = check_ssl(hostname, port)
-        console.print(f"[cyan]SSL/TLS Check Results for {hostname}:{port}[/]")
-        console.print(result)
-
-    def do_audit_headers(self, args):
-        """Analyze HTTP headers for security configurations."""
-        questions = [
-            {
-                "type": "input",
-                "name": "url",
-                "message": "Enter target URL:",
-            },
-        ]
-        answers = prompt(questions)
-        url = answers["url"]
-        result = analyze_headers(url)
-        console.print(f"[cyan]HTTP Header Analysis Results for {url}[/]")
-        console.print(result)
-
-    def do_audit_gdpr(self, args):
-        """Check GDPR compliance for a target."""
-        questions = [
-            {
-                "type": "input",
-                "name": "url",
-                "message": "Enter target URL:",
-            },
-        ]
-        answers = prompt(questions)
-        url = answers["url"]
-        result = check_gdpr_compliance(url)
-        console.print(f"[cyan]GDPR Compliance Results for {url}[/]")
-        console.print(result)
-
-    def do_audit_error_handling(self, args):
-        """Check for improper error handling in a web application."""
-        questions = [
-            {
-                "type": "input",
-                "name": "url",
-                "message": "Enter target URL:",
-            },
-        ]
-        answers = prompt(questions)
-        url = answers["url"]
-        result = check_error_handling(url)
-        console.print(f"[cyan]Error Handling Check Results for {url}[/]")
-        console.print(result)
-
-    def do_audit_all(self, args):
-        """Run all auditor checks on a target."""
-        questions = [
-            {
-                "type": "input",
-                "name": "url",
-                "message": "Enter target URL:",
-            },
-            {
-                "type": "input",
-                "name": "hostname",
-                "message": "Enter hostname (e.g., example.com):",
-            },
-            {
-                "type": "input",
-                "name": "port",
-                "message": "Enter port (default: 443):",
-                "default": "443",
-            },
-        ]
-        answers = prompt(questions)
-        url = answers["url"]
-        hostname = answers["hostname"]
-        port = int(answers["port"])
-
-        console.print("[cyan]Running all auditor checks...[/]")
-
-        ssl_result = check_ssl(hostname, port)
-        console.print(f"[cyan]SSL/TLS Check Results for {hostname}:{port}[/]")
-        console.print(ssl_result)
-
-        header_result = analyze_headers(url)
-        console.print(f"[cyan]HTTP Header Analysis Results for {url}[/]")
-        console.print(header_result)
-
-        gdpr_result = check_gdpr_compliance(url)
-        console.print(f"[cyan]GDPR Compliance Results for {url}[/]")
-        console.print(gdpr_result)
-
-        error_handling_result = check_error_handling(url)
-        console.print(f"[cyan]Error Handling Check Results for {url}[/]")
-        console.print(error_handling_result)
-
-    # ----- Utilities -----
-    def do_clear(self, _):
-        """Clear the screen"""
-        os.system('cls' if os.name == 'nt' else 'clear')
-
-    def postcmd(self, stop: bool, line: str) -> bool:
-        """Post-command processing"""
-        return stop
-
-    def precmd(self, line: str) -> str:
-        """Pre-command processing"""
-        return line
+    def do_exit(self, _):
+        """Exit the console."""
+        if self.webdriver:
+            try:
+                self.webdriver.quit()
+            except Exception:
+                pass
+        console.print("[cyan]Goodbye![/]")
+        return True
 
 def main():
-    """Entry point for the SecCQL interactive console."""
-    app = SecCQLConsole()
-    app.cmdloop()
+    SecCQLConsole().cmdloop()
 
 if __name__ == "__main__":
     main()

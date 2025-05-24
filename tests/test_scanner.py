@@ -177,66 +177,120 @@ class TestIDORScanner(unittest.TestCase):
         self.assertGreater(len(scanner.test_ids), 0, "IDOR test IDs should not be empty.")
 
 class TestCSRFScanner(unittest.TestCase):
-    def test_csrf_detection(self, mock_post):
+    @patch("requests.post") # Add patch decorator
+    def test_csrf_detection(self, mock_post): # Keep mock_post argument
+        """Test the analyze_form method for CSRF detection."""
         scanner = CSRFScanner()
-        mock_post.return_value.status_code = 200
-        mock_post.return_value.text = "CSRF vulnerable"
-        
-        form = {
-            "action": "/submit",
-            "inputs": [{"name": "user"}, {"name": "token", "value": "123"}]
-        }
-        
-        # Test with missing token
-        vulnerable = scanner.test_csrf(form, "http://test.com")
-        self.assertTrue(vulnerable)
-        
-        # Test with token
-        form["inputs"][1]["value"] = "valid_csrf_token"
-        mock_post.return_value.text = "OK"
-        self.assertFalse(scanner.test_csrf(form, "http://test.com"))
 
-    @patch("scanner.csrf.send_request")
-    def test_known_vulnerable_endpoint(self, mock_send_request):
+        # Mock response for POST without token (vulnerable case)
+        mock_post_vuln = MagicMock()
+        mock_post_vuln.status_code = 200 # Assume success indicates vulnerability
+        mock_post_vuln.text = "Action successful"
+        mock_post.return_value = mock_post_vuln # Set the mock return value
+        
+        form_with_token = {
+            "action": "/submit",
+             "inputs": [{"name": "user"}, {"name": "csrf_token", "value": "abc", "type": "hidden"}] # Example with token
+        }
+        base_url = "http://test.com"
+
+        # Test analyze_form: should detect vulnerability when token is missing/invalid
+        # analyze_form internally makes a POST request without the token
+        result = scanner.analyze_form(form_with_token, base_url)
+        self.assertTrue(result["vulnerable"], "analyze_form should detect vulnerability when token is missing/invalid")
+        self.assertEqual(result["url"], "http://test.com/submit")
+        self.assertTrue(result["has_csrf_field"])
+        mock_post.assert_called() # Ensure POST was called
+
+        # Optional: Test a non-vulnerable case (if analyze_form supported it)
+        # Currently analyze_form only tests the vulnerable case (request without token)
+        # To test non-vulnerable case, analyze_form would need modification or a different test approach.
+
+    @patch("requests.Session.post") # Patch the actual method used
+    @patch("requests.Session.get") # scan_endpoint also does a GET first
+    def test_known_vulnerable_endpoint(self, mock_get, mock_post): # Add mock_get
         """
         Test the scanner against a known vulnerable endpoint.
         """
-        scanner = CSRFScanner(driver=None)  # Mock driver
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.text = "CSRF vulnerability detected"
-        mock_send_request.return_value = mock_response
+        scanner = CSRFScanner(driver=None)
 
-        url = "https://vulnerable-site.com"
-        self.assertTrue(scanner.test_csrf(url), "CSRF vulnerability should be detected.")
+        # Mock the initial GET response (e.g., no strong protections)
+        mock_get_response = MagicMock()
+        mock_get_response.status_code = 200
+        mock_get_response.headers = {}
+        mock_get_response.cookies = {}
+        mock_get_response.text = "<html>Form page</html>"
+        mock_get.return_value = mock_get_response
 
-    @patch("scanner.csrf.send_request")
-    def test_csrf_vulnerability_detection(self, mock_send_request):
+        # Mock the POST response to indicate vulnerability (e.g., success without token)
+        mock_post_response = MagicMock()
+        mock_post_response.status_code = 200 # Assume success even without token indicates vulnerability
+        mock_post_response.text = "Action successful"
+        mock_post_response.headers = {}
+        mock_post.return_value = mock_post_response
+
+        url = "https://vulnerable-site.com/action"
+        result = scanner.scan_endpoint(url) # Call the correct method
+        # Check the 'vulnerable' key in the result dict
+        self.assertTrue(result['vulnerable'], "CSRF vulnerability should be detected.")
+        # Check that POST was called (it's called multiple times for different payloads)
+        mock_post.assert_called()
+
+    @patch("requests.Session.post") # Patch the actual method used
+    @patch("requests.Session.get") # scan_endpoint also does a GET first
+    def test_csrf_vulnerability_detection(self, mock_get, mock_post):
         """
         Test the CSRF scanner against a simulated vulnerable endpoint.
         """
-        scanner = CSRFScanner(driver=None)  # Mock driver
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.text = "This site is vulnerable to CSRF"
-        mock_send_request.return_value = mock_response
+        scanner = CSRFScanner(driver=None)
+
+        # Mock the initial GET response
+        mock_get_response = MagicMock()
+        mock_get_response.status_code = 200
+        mock_get_response.headers = {}
+        mock_get_response.cookies = {}
+        mock_get_response.text = "<html>Form page</html>"
+        mock_get.return_value = mock_get_response
+
+        # Mock the POST response to indicate vulnerability
+        mock_post_response = MagicMock()
+        mock_post_response.status_code = 200 # Assume success indicates vulnerability
+        mock_post_response.text = "Action successful"
+        mock_post_response.headers = {}
+        mock_post.return_value = mock_post_response
 
         url = "https://example.com/vulnerable-endpoint"
-        self.assertTrue(scanner.test_csrf(url), "CSRF vulnerability should be detected.")
+        result = scanner.scan_endpoint(url) # Call the correct method
+        self.assertTrue(result["vulnerable"], "CSRF vulnerability should be detected.")
+        mock_post.assert_called()
 
-    @patch("scanner.csrf.send_request")
-    def test_no_csrf_vulnerability(self, mock_send_request):
+    @patch("requests.Session.post") # Patch the actual method used
+    @patch("requests.Session.get") # scan_endpoint also does a GET first
+    def test_no_csrf_vulnerability(self, mock_get, mock_post): # Add mock_get
         """
         Test the CSRF scanner against a secure endpoint.
         """
-        scanner = CSRFScanner(driver=None)  # Mock driver
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.text = "This site is secure"
-        mock_send_request.return_value = mock_response
+        scanner = CSRFScanner(driver=None)
+
+        # Mock the initial GET response
+        mock_get_response = MagicMock()
+        mock_get_response.status_code = 200
+        mock_get_response.headers = {}
+        mock_get_response.cookies = {}
+        mock_get_response.text = "<html>Form page</html>"
+        mock_get.return_value = mock_get_response
+
+        # Mock the POST response to indicate it's secure (e.g., requires token, rejects request)
+        mock_post_response = MagicMock()
+        mock_post_response.status_code = 403 # Assume Forbidden indicates protection
+        mock_post_response.text = "CSRF token missing or invalid"
+        mock_post_response.headers = {}
+        mock_post.return_value = mock_post_response
 
         url = "https://example.com/secure-endpoint"
-        self.assertFalse(scanner.test_csrf(url), "No CSRF vulnerability should be detected.")
+        result = scanner.scan_endpoint(url) # Call the correct method
+        self.assertFalse(result["vulnerable"], "No CSRF vulnerability should be detected.")
+        mock_post.assert_called()
 
 class TestCommandInjectionScanner(unittest.TestCase):
     def test_command_injection_payloads(self):
