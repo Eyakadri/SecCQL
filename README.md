@@ -109,11 +109,8 @@ SecCQL/
 ├── reporter/        # Report generation (text, json, csv, charts, html)
 ├── scanner/         # Vulnerability scanning modules (SQLi, XSS, CSRF, etc.)
 ├── tests/           # Unit and integration tests
-├── .gitignore       # Git ignore rules
-├── LICENSE          # Project License file (MIT)
 ├── main.py          # Main entry point (primarily for crawler execution)
-├── README.md        # This file!
-├── requirements.txt # Python dependencies
+├── README.md        # This file
 └── setup.py         # Installation script
 ```
 
