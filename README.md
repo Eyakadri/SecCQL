@@ -110,7 +110,6 @@ SecCQL/
 ├── scanner/         # Vulnerability scanning modules (SQLi, XSS, CSRF, etc.)
 ├── tests/           # Unit and integration tests
 ├── main.py          # Main entry point (primarily for crawler execution)
-├── README.md        # This file
 └── setup.py         # Installation script
 ```
 
